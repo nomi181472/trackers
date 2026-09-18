@@ -1,0 +1,17 @@
+.venv
+node_modules
+.next
+.pt
+/data
+
+# Ignore generated job result files
+backend/data/jobs/**/*.mp4
+backend/data/jobs/**/*.jpg
+backend/data/scenarios/*.mp4
+
+# Ignore Python bytecode
+*.pyc
+__pycache__/
+
+# Ignore MP4 files
+*.mp4
