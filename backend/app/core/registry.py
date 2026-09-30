@@ -55,3 +55,10 @@ def get_tracker(tid: str) -> dict:
 
 def default_params(tid: str) -> dict:
     return REGISTRY.default_params(tid)
+
+
+# The one place the detector's defaults are written down.  The API merges client
+# payloads over this, and `SimDetector` falls back to it -- so editing a
+# DETECTOR_PARAMS default above can no longer leave a second copy behind.
+DETECTION_DEFAULTS = {p["key"]: p["default"] for p in DETECTOR_PARAMS}
+DETECTION_DEFAULTS.update({p["key"]: p["default"] for p in SCENARIO_DETECTION_PARAMS})

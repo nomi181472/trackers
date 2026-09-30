@@ -4,12 +4,12 @@ from __future__ import annotations
 import os
 
 from fastapi import APIRouter, HTTPException, UploadFile
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse
 
 from app import config
 from app.core import jobs
 from app.core.plugins import REGISTRY
-from app.core.registry import DETECTOR_PARAMS, SCENARIO_DETECTION_PARAMS, get_tracker
+from app.core.registry import DETECTION_DEFAULTS, DETECTOR_PARAMS, SCENARIO_DETECTION_PARAMS, get_tracker
 from app.core.runner import run_simulation, write_video
 from app.core.scenario import Scenario
 
@@ -65,8 +65,10 @@ def scenario_preview(payload: dict):
 @router.post("/simulations")
 def start_simulation(payload: dict):
     """payload: {scenario: {...}, detection: {...}, trackers: [{tracker_id, params}]}"""
-    scenario_params = dict(payload.get("scenario", {}))
-    detection_params = dict(payload.get("detection", DEFAULT_DETECTION_PROFILE))
+    # Merge, don't replace: a client that sends only `conf` must still get the
+    # rest of the detector knobs rather than silently falling back to whatever
+    # `SimDetector` happens to hardcode.
+    detection_params = {**DETECTION_DEFAULTS, **(payload.get("detection") or {})}
     payload["detection"] = detection_params
     raw_trackers = payload.get("trackers", [])
     specs = []
@@ -153,7 +155,10 @@ def job_status(jid: str):
     j = jobs.get_job(jid)
     if j is None:
         raise HTTPException(status_code=404, detail="no such job")
-    return j
+    # Allow-list, not blacklist: `payload` and `traceback` are internal, and a
+    # field added to the job dict later must not leak by default.
+    return {k: j.get(k) for k in ("id", "kind", "status", "progress",
+                                  "message", "detail", "error", "result")}
 
 
 @router.get("/media/{name}")
@@ -167,8 +172,4 @@ def media(name: str):
 
 @router.get("/defaults")
 def defaults():
-    return {"detection": DEFAULT_DETECTION_PROFILE}
-
-
-DEFAULT_DETECTION_PROFILE = {p["key"]: p["default"] for p in DETECTOR_PARAMS}
-DEFAULT_DETECTION_PROFILE.update({p["key"]: p["default"] for p in SCENARIO_DETECTION_PARAMS})
+    return {"detection": DETECTION_DEFAULTS}

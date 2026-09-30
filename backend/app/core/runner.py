@@ -13,8 +13,7 @@ import numpy as np
 from app.core.explainer import explain
 from app.core.metrics import evaluate
 from app.core.plugins import build_engine
-from app.core.registry import get_tracker
-from app.core.trackers import color_for
+from app.core.registry import DETECTION_DEFAULTS, get_tracker
 
 
 class SimDetector:
@@ -25,12 +24,13 @@ class SimDetector:
     """
 
     def __init__(self, scenario, params: dict):
+        params = {**DETECTION_DEFAULTS, **(params or {})}
         self.scenario = scenario
-        self.conf = float(params.get("conf", 0.25))
-        self.miss_rate = float(params.get("miss_rate", 0.0))
-        self.fp_rate = float(params.get("fp_rate", 0.0))
-        self.jitter = int(params.get("jitter", 2))
-        self.drop_occluded = bool(params.get("drop_while_occluded", True))
+        self.conf = float(params["conf"])
+        self.miss_rate = float(params["miss_rate"])
+        self.fp_rate = float(params["fp_rate"])
+        self.jitter = int(params["jitter"])
+        self.drop_occluded = bool(params["drop_while_occluded"])
         self.rng = np.random.default_rng(scenario.seed + 999)
         self.blur = bool(scenario.blur)
 
@@ -137,7 +137,12 @@ def run_simulation(scenario, specs: list[dict], detection_params: dict,
 
     for si, spec in enumerate(specs):
         tid = spec["tracker_id"]
-        meta = get_tracker(tid)
+        try:
+            meta = get_tracker(tid)
+        except KeyError as e:  # noqa: PERF203  (one bad id must not kill the job)
+            results.append(dict(tracker_id=tid, name=tid, tagline="", mode="multi",
+                                error=str(e.args[0] if e.args else e)))
+            continue
         tick(f"Starting {meta['name']}", 0.05 + 0.9 * (si / max(1, len(specs))))
         try:
             engine = build_engine(tid, spec["params"], scenario.fps,
@@ -147,13 +152,28 @@ def run_simulation(scenario, specs: list[dict], detection_params: dict,
                                 mode=meta["mode"], error=str(e)))
             continue
 
+        # A follower needs one box to latch onto, and that box has to belong to
+        # the object the scorer will later measure against -- `Scenario` owns
+        # that choice so the two can never drift apart.  Seeding it on a frame
+        # where the object is hidden behind the wall would lose it immediately.
+        seed_frame = None
+        if meta["mode"] == "single":
+            seed_frame = scenario.first_visible_target_frame()
+            if seed_frame is None:
+                results.append(dict(
+                    tracker_id=tid, name=meta["name"], tagline=meta["tagline"], mode=meta["mode"],
+                    error=(f"Ground-truth object {scenario.target_id()} is never visible in this "
+                           f"scenario, so there is nothing to initialise the follower on.")))
+                continue
+
         track_frames = []
         try:
             for t in range(T):
                 img = scenario.frames[t]
                 if meta["mode"] == "single":
-                    if t == 0:
-                        target = scenario.gt[0][0]
+                    if t == seed_frame:
+                        target = next(e for e in scenario.gt[t]
+                                      if e["id"] == scenario.target_id())
                         engine.init(img, target["box"])
                     state = engine.update(np.zeros((0, 5)), img)
                 else:

@@ -109,8 +109,9 @@ export function TrackerCard({
           ))}
           {t.mode === "single" ? (
             <small>
-              Single-object tracker: it will be initialised on the first ground-truth box, and switched to a new object whenever the previous one
-              is lost.
+              Single-object tracker: it follows one object only, seeded on that object&apos;s first
+              visible frame. Once it loses the object it is never re-initialised — the black box
+              after the wall is the whole point of the experiment.
             </small>
           ) : null}
         </div>

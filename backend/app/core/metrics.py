@@ -147,7 +147,6 @@ def _eval_multi(scenario, tracker_id, track_frames, dets_frames):
             tid, iou_v = matched
             prev = last_track_of_gt.get(gid)
             if prev is not None and prev != tid:
-                alive_prev = prev in tid_set or (t - last_frame_active.get(prev, -999) <= 12)
                 other_gt = pair_by_tr.get(prev, (None, 0))[0]
                 adjacent = other_gt is not None and other_gt != gid
                 if adjacent:
@@ -318,24 +317,35 @@ def _eval_multi(scenario, tracker_id, track_frames, dets_frames):
 
 
 def _eval_single(scenario, tracker_id, track_frames, dets_frames):
-    """Single-object follower evaluation: just blast the box against its truth."""
+    """Single-object follower evaluation: just blast the box against its truth.
+
+    The subject is `scenario.target_id()` -- the same object the runner seeded
+    the follower with.  Frames where that object is not visible are *unscorable*
+    rather than wrong: we cannot confirm we are on it, so they are excluded from
+    the accuracy denominator and they break the "unbroken correct run" streak.
+    """
     T = scenario.meta["frames"]
-    target = 0  # we always follow object 0
+    target = scenario.target_id()
     events: list[Event] = []
     correct_frames = 0
     total_visible = 0
     gap_open = None
-    full_seq = True
+
+    def gt_at(t, gid):
+        return next((e for e in (scenario.gt[t] if t < len(scenario.gt) else [])
+                     if e["id"] == gid), None)
 
     run = []
     for t in range(T):
-        gts = [e for e in scenario.gt[t] if e["visible"]] if t < len(scenario.gt) else []
-        target_gt = gts[0] if gts else None
+        target_gt = gt_at(t, target)
         tr = track_frames[t][0] if track_frames[t] else None
-        run.append(dict(box=tr.box if tr else None, score=tr.score if tr else 0.0))
-        if target_gt:
+        correct = bool(target_gt and target_gt["visible"]
+                       and tr and _iou(tr.box, target_gt["box"]) >= 0.5)
+        run.append(dict(box=tr.box if tr else None, score=tr.score if tr else 0.0,
+                        correct=correct))
+        if target_gt and target_gt["visible"]:
             total_visible += 1
-            if tr and _iou(tr.box, target_gt["box"]) >= 0.5:
+            if correct:
                 correct_frames += 1
                 if gap_open is not None:
                     events.append(Event(frame=t, type="follow_recover", severity="informational",
@@ -353,17 +363,15 @@ def _eval_single(scenario, tracker_id, track_frames, dets_frames):
             events.append(Event(frame=t, type="follow_lost", severity="warning", blame="tracker",
                                 gt_ids=[target],
                                 text="Follower is reported during a frame where the real object is hidden."))
+
     accuracy = correct_frames / total_visible if total_visible else 0.0
+    # longest unbroken stretch of frames we were demonstrably on the object --
+    # a frame with no visible target breaks the run, because it proves nothing.
     longest = 0
-    cur_ok = False
     cur_len = 0
     for f in run:
-        ok = f["box"] is not None
-        if ok:
-            cur_len += 1
-            longest = max(longest, cur_len)
-        else:
-            cur_len = 0
+        cur_len = cur_len + 1 if f["correct"] else 0
+        longest = max(longest, cur_len)
     metrics = dict(
         accuracy=round(accuracy, 3),
         correct_frames=correct_frames, total_visible=total_visible,

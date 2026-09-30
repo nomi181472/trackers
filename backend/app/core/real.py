@@ -189,8 +189,7 @@ def run_real(model, cap, tracker_id: str, tracker_params: dict, det_params: dict
         sections.append(dict(name="Event log", bullets=[e["text"] for e in events[:8]]))
     report = dict(tracker_id=tracker_id, name=meta["name"], tagline=meta["tagline"],
                   grade=grade, verdict=verdict, sections=sections,
-                  failed=grade in ("D", "E", "F"),
-                  case="No ground truth for user video; events are heuristic." if not os.environ.get("HAS_GT") else "")
+                  failed=grade in ("D", "E", "F"))
     return dict(tracker_id=tracker_id, name=meta["name"], tagline=meta["tagline"],
                 mode="real", codec=codec,
                 video_url=f"/api/media/{os.path.basename(out_path)}",

@@ -7,7 +7,6 @@ surprisingly effective for a teaching simulator.
 from __future__ import annotations
 
 import threading
-import traceback
 from concurrent.futures import ThreadPoolExecutor
 
 from app.config import new_id
@@ -45,8 +44,8 @@ def _run(jid: str, fn):
         with _lock:
             if _JOBS.get(jid):
                 _JOBS[jid]["status"] = "error"
+                # No traceback: it would ride along to whoever polls this job.
                 _JOBS[jid]["error"] = str(e)
-                _JOBS[jid]["traceback"] = traceback.format_exc()
                 _JOBS[jid]["message"] = f"Failed: {e}"
 
 

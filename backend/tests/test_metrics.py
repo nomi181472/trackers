@@ -25,9 +25,13 @@ GT_TOTAL = T  # one visible object in every frame
 
 
 class _Scenario:
-    def __init__(self, frames: int = T):
+    def __init__(self, frames: int = T, target: int = 0):
         self.meta = {"frames": frames}
         self.gt = [[dict(id=0, box=list(BOX), visible=True, occluded=False)] for _ in range(frames)]
+        self._target = target
+
+    def target_id(self) -> int:
+        return self._target
 
 
 def _state(tracks: list[tuple[int, list]]) -> list[Track]:
@@ -94,3 +98,78 @@ def test_events_still_describe_the_failures():
     types = [e.type for e in _evaluate("half_dead").events]
     assert "track_loss" in types
     assert "ghost" in [e.type for e in _evaluate("half_dead_ghost").events]
+
+
+# --------------------------------------------------------------------------- #
+# Single-object evaluation: longest_correct_run must mean "correct"           #
+# --------------------------------------------------------------------------- #
+
+SINGLE_ID = "mil"
+
+
+def _eval_single(kind: str, gt_visible: list[bool] | None = None, target: int = 0):
+    """Score a scripted follower clip. `gt_visible[t]` controls the target."""
+    sc = _Scenario()
+    if gt_visible is not None:
+        sc.gt = [[dict(id=target, box=list(BOX), visible=v, occluded=not v)]
+                 for v in gt_visible]
+    boxes = {
+        "perfect": [list(BOX)] * T,
+        "always_wrong": [list(GHOST)] * T,      # reports a box, never on target
+        "half_wrong": [list(BOX)] * 5 + [list(GHOST)] * 5,
+        "silent": [[]] * T,                      # reports nothing at all
+    }[kind]
+    track_frames = [[Track(0, list(b), score=0.8)] if b else [] for b in boxes]
+    return evaluate(sc, SINGLE_ID, track_frames, [np.zeros((0, 5)) for _ in range(T)])
+
+
+def test_a_perfect_follower_has_a_perfect_run():
+    m = _eval_single("perfect").metrics
+    assert m["accuracy"] == 1.0
+    assert m["longest_correct_run"] == T
+    assert m["lost_frames"] == 0
+
+
+def test_a_follower_that_is_always_wrong_has_a_run_of_zero():
+    """The regression: this used to report `T` and print 'Longest unbroken
+    correct run: 90 frames' for a tracker that was never once on target."""
+    m = _eval_single("always_wrong").metrics
+    assert m["accuracy"] == 0.0
+    assert m["correct_frames"] == 0
+    assert m["longest_correct_run"] == 0, "a box on the wrong object is not a correct run"
+
+
+def test_a_follower_that_stops_reporting_also_has_a_run_of_zero():
+    m = _eval_single("silent").metrics
+    assert m["accuracy"] == 0.0
+    assert m["longest_correct_run"] == 0
+
+
+def test_the_run_counts_only_the_correct_stretch():
+    m = _eval_single("half_wrong").metrics
+    assert m["correct_frames"] == 5
+    assert m["accuracy"] == 0.5
+    assert m["longest_correct_run"] == 5, "the trailing wrong stretch must not count"
+
+
+def test_a_hidden_target_frame_breaks_the_run_and_is_not_a_miss():
+    """Unscorable, not wrong: we cannot confirm we are on it."""
+    visible = [True] * 4 + [False, False] + [True] * 4
+    m = _eval_single("perfect", gt_visible=visible).metrics
+    assert m["total_visible"] == 8, "hidden frames stay out of the accuracy denominator"
+    assert m["correct_frames"] == 8
+    assert m["accuracy"] == 1.0, "hiding the object is not the tracker's fault"
+    assert m["longest_correct_run"] == 4, "the hidden gap breaks the streak"
+
+
+def test_single_eval_scores_the_target_object_not_the_first_visible_one():
+    """object 1 is the only visible one, but the follower was seeded on object 0."""
+    sc = _Scenario()
+    sc.gt = [[dict(id=0, box=list(BOX), visible=False, occluded=True),
+              dict(id=1, box=list(GHOST), visible=True, occluded=False)] for _ in range(T)]
+    track_frames = [[Track(0, list(BOX), score=0.8)] for _ in range(T)]
+    res = evaluate(sc, SINGLE_ID, track_frames, [np.zeros((0, 5)) for _ in range(T)])
+    # object 0 never shows, so nothing is scorable at all
+    assert res.metrics["total_visible"] == 0
+    assert res.metrics["accuracy"] == 0.0
+    assert res.metrics["longest_correct_run"] == 0

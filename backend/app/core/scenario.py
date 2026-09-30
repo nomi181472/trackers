@@ -148,7 +148,6 @@ class Scenario:
         shake_dx = rng.integers(-self.shake_px, self.shake_px + 1, size=T) if self.camera_shake else None
         shake_dy = rng.integers(-self.shake_px, self.shake_px + 1, size=T) if self.camera_shake else None
 
-        composed_all = []
         for t in range(T):
             frame = np.full((H, W, 3), SKY, dtype=np.uint8)
             entries = []
@@ -156,8 +155,6 @@ class Scenario:
             for i in range(self.num_objects):
                 cx, cy = paths[i][t]
                 rr = radii[i]
-                # ground shadow first
-                cv_ell = None
                 pts.append((int(cx), int(cy), rr))
             # draw in two passes: shadows then balls
             for (cx, cy, rr) in pts:
@@ -218,6 +215,31 @@ class Scenario:
             camera_shake=self.camera_shake, similar_colors=self.similar_colors,
             occluder_box=wall, seed=self.seed,
         )
+
+    # ------------------------------------------------------------------ #
+    # Single-object target                                                 #
+    # ------------------------------------------------------------------ #
+
+    def target_id(self) -> int:
+        """Which object a single-object follower is asked to follow.
+
+        One rule, owned here, so the runner (which seeds the follower) and the
+        scorer (which grades it) can never disagree about the subject.
+        """
+        return 0
+
+    def first_visible_target_frame(self) -> int | None:
+        """First frame the target is actually visible, or None if never.
+
+        Seeding a follower on a box that is hidden behind the wall is a
+        guaranteed loss, so the runner waits for a frame we can actually see.
+        """
+        tid = self.target_id()
+        for t, entries in enumerate(self.gt):
+            for e in entries:
+                if e["id"] == tid and e["visible"]:
+                    return t
+        return None
 
     # ------------------------------------------------------------------ #
     def render_annotated_frame(self, t: int, tracks=None, draw_gt=True, labels=True):
