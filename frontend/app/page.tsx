@@ -51,12 +51,6 @@ const SCENARIO_DEFAULTS: ParamValues = {
   blur: false, blur_sigma: 3, similar_colors: false,
 };
 
-const BADGE: Record<string, string> = {
-  ultralytics: "badge-ul",
-  custom: "badge-cu",
-  opencv: "badge-cv",
-};
-
 /* ------------------------------------------------------------------ */
 
 export default function Home() {

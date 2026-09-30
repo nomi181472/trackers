@@ -23,8 +23,9 @@ def _centre(box):
 def run_real(model, cap, tracker_id: str, tracker_params: dict, det_params: dict,
              progress=None, out_dir: str = "data/videos", job_id: str = "real") -> dict:
     import cv2
+    from app.core.plugins import build_engine
     from app.core.registry import get_tracker
-    from app.core.trackers import build_engine, color_for
+    from app.core.trackers import color_for
 
     fps0 = max(1, int(cap.get(cv2.CAP_PROP_FPS)) or 15)
     W = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -32,8 +33,12 @@ def run_real(model, cap, tracker_id: str, tracker_params: dict, det_params: dict
     total = max(1, int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) or 1)
     stride = max(1, int(np.ceil(total / 600))) if total > 1 else 1
 
-    engine = build_engine(tracker_id, tracker_params, fps0)
     meta = get_tracker(tracker_id)
+    if meta["mode"] == "single":
+        raise RuntimeError(
+            f"'{meta['name']}' is a single-object follower: it needs one known box to latch onto "
+            f"and cannot follow a whole video. Use a multi-object tracker in real mode.")
+    engine = build_engine(tracker_id, tracker_params, fps0)
     conf = float(det_params.get("conf", 0.25))
     imgsz = int(det_params.get("imgsz", 640))
     half = bool(det_params.get("half", False))

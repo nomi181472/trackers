@@ -8,11 +8,21 @@ from fastapi.responses import FileResponse, JSONResponse
 
 from app import config
 from app.core import jobs
-from app.core.registry import REGISTRY, DETECTOR_PARAMS, SCENARIO_DETECTION_PARAMS, default_params, get_tracker
+from app.core.plugins import REGISTRY
+from app.core.registry import DETECTOR_PARAMS, SCENARIO_DETECTION_PARAMS, get_tracker
 from app.core.runner import run_simulation, write_video
 from app.core.scenario import Scenario
 
 router = APIRouter(prefix="/api")
+
+
+def _bad_tracker(e: KeyError) -> HTTPException:
+    """An unknown tracker id is a client mistake, not a server crash.
+
+    `str(KeyError)` would wrap the message in another pair of quotes, and the
+    UI shows this text verbatim, so unwrap it.
+    """
+    return HTTPException(status_code=400, detail=e.args[0] if e.args else str(e))
 
 
 @router.get("/health")
@@ -23,18 +33,12 @@ def health():
 @router.get("/trackers")
 def list_trackers():
     """Everything the simulator knows how to run, with every hyperparameter."""
-    from app.core.trackers import _opencv_probe
-    avail = _opencv_probe()
-    out = []
-    for t in REGISTRY:
-        t2 = dict(t)
-        t2["available"] = (t["engine"] != "opencv") or (t["id"] in avail)
-        out.append(t2)
+    trackers = REGISTRY.catalog()
     return {
-        "trackers": out,
+        "trackers": trackers,
         "detector_params": DETECTOR_PARAMS,
         "scenario_detection_params": SCENARIO_DETECTION_PARAMS,
-        "defaults": {t["id"]: default_params(t["id"]) for t in REGISTRY},
+        "defaults": {t["id"]: REGISTRY.default_params(t["id"]) for t in trackers},
     }
 
 
@@ -68,18 +72,17 @@ def start_simulation(payload: dict):
     specs = []
     for tr in raw_trackers:
         tid = tr.get("tracker_id")
-        get_tracker(tid)  # raises 404-ish KeyError
+        try:
+            meta = get_tracker(tid)
+        except KeyError as e:
+            raise _bad_tracker(e) from e
         params = {**(tr.get("params") or {})}
-        meta = get_tracker(tid)
         for p in meta["params"]:
             params.setdefault(p["key"], p["default"])
         specs.append({"tracker_id": tid, "params": params})
     payload["trackers"] = specs
 
-    try:
-        jid = jobs.start_job("simulation", payload, _run_simulation_job)
-    except KeyError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
+    jid = jobs.start_job("simulation", payload, _run_simulation_job)
     return {"job_id": jid}
 
 
@@ -111,8 +114,16 @@ def start_real_job(payload: dict):
     if not (config.UPLOADS_DIR / upload_id).exists():
         raise HTTPException(status_code=400, detail="upload not found; re-upload")
     tid = payload.get("tracker_id")
-    get_tracker(tid)  # KeyError -> 400 below
-    params = {p["key"]: p["default"] for p in get_tracker(tid)["params"]}
+    try:
+        meta = get_tracker(tid)
+    except KeyError as e:
+        raise _bad_tracker(e) from e
+    if meta["mode"] == "single":
+        raise HTTPException(
+            status_code=400,
+            detail=(f"'{meta['name']}' is a single-object follower and cannot be run over a whole "
+                    f"video. Pick a multi-object tracker for real mode."))
+    params = {p["key"]: p["default"] for p in meta["params"]}
     params.update(payload.get("params") or {})
     det_params = {p["key"]: p["default"] for p in DETECTOR_PARAMS}
     det_params.update(payload.get("det_params") or {})
@@ -132,11 +143,8 @@ def start_real_job(payload: dict):
                           progress=progress, out_dir=out_dir, job_id=progress.jid)
         return {"results": [result]}
 
-    try:
-        jid = jobs.start_job("real", dict(tid=tid, upload_id=upload_id, params=params, det_params=det_params),
-                             _run)
-    except KeyError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
+    jid = jobs.start_job("real", dict(tid=tid, upload_id=upload_id, params=params, det_params=det_params),
+                         _run)
     return {"job_id": jid}
 
 

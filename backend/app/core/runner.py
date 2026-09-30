@@ -12,8 +12,9 @@ import numpy as np
 
 from app.core.explainer import explain
 from app.core.metrics import evaluate
+from app.core.plugins import build_engine
 from app.core.registry import get_tracker
-from app.core.trackers import build_engine, color_for, _iou
+from app.core.trackers import color_for
 
 
 class SimDetector:
@@ -147,20 +148,25 @@ def run_simulation(scenario, specs: list[dict], detection_params: dict,
             continue
 
         track_frames = []
-        for t in range(T):
-            img = scenario.frames[t]
-            if meta["mode"] == "single":
-                if t == 0:
-                    target = scenario.gt[0][0]
-                    engine.init(img, target["box"])
-                state = engine.update(np.zeros((0, 5)), img)
-            else:
-                state = engine.update(dets_frames[t], img)
-            track_frames.append(state.active)
-            done += 1
-            if done % max(1, T // 5) == 0:
-                tick(f"{meta['name']}: frame {t + 1}/{T}",
-                     0.1 + 0.8 * ((si * T + t) / max(1, n_total)))
+        try:
+            for t in range(T):
+                img = scenario.frames[t]
+                if meta["mode"] == "single":
+                    if t == 0:
+                        target = scenario.gt[0][0]
+                        engine.init(img, target["box"])
+                    state = engine.update(np.zeros((0, 5)), img)
+                else:
+                    state = engine.update(dets_frames[t], img)
+                track_frames.append(state.active)
+                done += 1
+                if done % max(1, T // 5) == 0:
+                    tick(f"{meta['name']}: frame {t + 1}/{T}",
+                         0.1 + 0.8 * ((si * T + t) / max(1, n_total)))
+        except Exception as e:  # noqa: BLE001  (one bad tracker must not kill the job)
+            results.append(dict(tracker_id=tid, name=meta["name"], tagline=meta["tagline"],
+                                mode=meta["mode"], error=str(e)))
+            continue
 
         tick(f"Scoring {meta['name']}", 0.9 + 0.05 * si)
         eval_res = evaluate(scenario, tid, track_frames, dets_frames)

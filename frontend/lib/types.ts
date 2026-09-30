@@ -17,7 +17,7 @@ export interface HyperParam {
 export interface TrackerMeta {
   id: string;
   name: string;
-  engine: "ultralytics" | "custom" | "opencv";
+  engine: string;
   mode: "multi" | "single";
   tagline: string;
   description: string;

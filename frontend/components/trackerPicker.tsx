@@ -92,7 +92,7 @@ export function TrackerCard({
         />
         <span className="nm">{t.name}</span>
         <span className="tag">{t.tagline}</span>
-        <span className={`badge ${BADGE[t.engine]}`}>{t.engine}</span>
+        <span className={`badge ${BADGE[t.engine] ?? "badge-cu"}`}>{t.engine}</span>
         {t.mode === "single" ? <span className="badge badge-single">single</span> : null}
         <span className="chev">▸</span>
       </div>

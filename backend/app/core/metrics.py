@@ -198,7 +198,6 @@ def _eval_multi(scenario, tracker_id, track_frames, dets_frames):
                             gt_ids=[gid],
                             text=f"Lost object {gid}: it exists in the scene but no track claims it now.",
                             fix="Increase track_buffer or drop_detection_while_occluded=off to see the pure tracker behaviour."))
-                total_fn += 1
 
         for tid in tid_set:
             if pair_by_tr.get(tid):
@@ -211,7 +210,6 @@ def _eval_multi(scenario, tracker_id, track_frames, dets_frames):
                         track_ids=[tid],
                         text=f"Track {tid} is chasing something that does not exist (ghost box, no real object).",
                         fix="Raise detection confidence (conf) or the tracker's new-track threshold."))
-                total_fp += 1
 
         # ---------------- detection level ---------------- #
         det_boxes = [d[:4] for d in (dets_frames[t] if t < len(dets_frames) else [])]
@@ -227,7 +225,9 @@ def _eval_multi(scenario, tracker_id, track_frames, dets_frames):
                           "with data that never existed."),
                     fix="Lower conf, use a bigger model (yolov8m/x), or disable randomness in the detection panel."))
 
-        # MOT accumulation
+        # MOT accumulation — the single source of truth for FP/FN.  The event
+        # loops above only *describe* losses and ghosts; counting them there as
+        # well would bill every FP and FN twice.
         fp = len(tid_set) - len(pair_by_tr)
         fn = len(visible) - len(pair_by_gt)
         total_fp += fp
