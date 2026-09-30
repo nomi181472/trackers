@@ -39,7 +39,7 @@ def test_health(client):
 def test_catalog_shape_is_unchanged(client):
     body = client.get("/api/trackers").json()
     assert set(body) == {"trackers", "detector_params", "scenario_detection_params", "defaults"}
-    assert len(body["trackers"]) == 16
+    assert len(body["trackers"]) == len(REGISTRY.ids())
     for entry in body["trackers"]:
         assert set(entry) == CATALOG_KEYS, entry.get("id")
         assert isinstance(entry["available"], bool)

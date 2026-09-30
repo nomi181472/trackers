@@ -12,7 +12,7 @@ import pytest
 
 from app.core.plugins import REGISTRY, build_engine
 from app.core.plugins.base import Engine
-from app.core.plugins.custom import CentroidTracker, GreedyIoUTracker
+from app.core.plugins.custom import CentroidTracker, GreedyIoUTracker, SortTracker
 from app.core.plugins.opencv import OpenCVSingleTracker, _opencv_probe
 from app.core.plugins.ultralytics import UltralyticsEngine
 
@@ -75,6 +75,7 @@ def test_previously_broken_ids_build_when_the_weights_are_present(monkeypatch):
 def test_custom_engines_are_the_expected_classes():
     assert isinstance(build_engine("greedy_iou", {}, FPS), GreedyIoUTracker)
     assert isinstance(build_engine("centroid", {}, FPS), CentroidTracker)
+    assert isinstance(build_engine("sort", {}, FPS), SortTracker)
 
 
 def test_ultralytics_engines_are_the_expected_class():

@@ -10,9 +10,9 @@
 [![Ultralytics](https://img.shields.io/badge/Ultralytics-YOLO-00FFFF?style=for-the-badge)](https://github.com/ultralytics/ultralytics)
 
 **An interactive visual lab to discover *why* and *how* multi-object trackers fail.**  
-Stress-test **16 object trackers** against occlusion, crossing paths, motion blur, camera shake, and look-alikes. Inspect granular failure reports, ID switches, and side-by-side MOT benchmarks in real time.
+Stress-test **17 object trackers** against occlusion, crossing paths, motion blur, camera shake, and look-alikes. Inspect granular failure reports, ID switches, and side-by-side MOT benchmarks in real time.
 
-[Quick Start](#-quick-start) • [Live Demo](#-demo) • [Supported Trackers](#-trackers-catalog-16) • [API Reference](#-api-endpoints) • [Teardown](#-stopping-the-services)
+[Quick Start](#-quick-start) • [Live Demo](#-demo) • [Supported Trackers](#-trackers-catalog-17) • [API Reference](#-api-endpoints) • [Teardown](#-stopping-the-services)
 
 </div>
 
@@ -119,12 +119,12 @@ npm run dev -- -p 3000
 
 ---
 
-## 🤖 Trackers Catalog (16)
+## 🤖 Trackers Catalog (17)
 
 | Engine | Trackers | Mode | Key Strengths & Vulnerabilities |
 |---|---|---|---|
 | **Ultralytics** | `bytetrack`, `botsort`, `ocsort`, `deepocsort`, `fasttrack`, `tracktrack` | Multi-Object | State-of-the-art MOT. BoT-SORT uses camera motion compensation (GMC) + ReID; ByteTrack recovers low-confidence detections; OC-SORT handles non-linear momentum. |
-| **Custom Baselines** | `greedy_iou`, `centroid` | Multi-Object | Pure geometric baselines. Fast and interpretable, but vulnerable to occlusions and overlapping bounding boxes. |
+| **Custom Baselines** | `greedy_iou`, `centroid`, `sort` | Multi-Object | Implemented from scratch in pure NumPy/SciPy — no weights, no downloads, always available. Greedy IoU and centroid are the naive baselines; **SORT** adds a constant-velocity Kalman filter plus optimal Hungarian assignment, and is ByteTrack's parent. Compare it with ByteTrack to see exactly what the "second chance for weak detections" buys. |
 | **OpenCV** | `mil`, `kcf`, `csrt`, `mosse`, `medianflow`, `nano`, `vit`, `dasiamrpn` | Single-Object | Classic vision trackers. High frame rates; susceptible to severe scale change and complete visual occlusion. |
 
 > **Note**: Availability is automatically detected at startup. Unusable trackers in your current OpenCV build are disabled gracefully in the UI.

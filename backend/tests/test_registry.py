@@ -9,7 +9,7 @@ from app.core.plugins.registry import register
 from app.core.registry import default_params, get_tracker, tracker_ids
 
 EXPECTED_IDS = {
-    "greedy_iou", "centroid",
+    "greedy_iou", "centroid", "sort",
     "bytetrack", "botsort", "ocsort", "deepocsort", "fasttrack", "tracktrack",
     "kcf", "csrt", "mosse", "mil", "medianflow", "nano", "vit", "dasiamrpn",
 }
@@ -24,9 +24,10 @@ OPENCV_IDS = {"kcf", "csrt", "mosse", "mil", "medianflow", "nano", "vit", "dasia
 ULTRALYTICS_IDS = {"bytetrack", "botsort", "ocsort", "deepocsort", "fasttrack", "tracktrack"}
 
 
-def test_all_sixteen_trackers_are_registered():
+def test_every_tracker_is_registered():
+    """Count is derived from EXPECTED_IDS so adding one does not touch a magic number."""
     assert set(REGISTRY.ids()) == EXPECTED_IDS
-    assert len(REGISTRY.ids()) == 16
+    assert len(REGISTRY.ids()) == len(EXPECTED_IDS)
 
 
 def test_ids_are_unique_and_stable():
@@ -35,10 +36,11 @@ def test_ids_are_unique_and_stable():
     assert ids == REGISTRY.ids(), "registry iteration order must be stable across calls"
 
 
-def test_catalog_order_matches_legacy_order():
-    """The UI renders the catalog as-is, so the familiar grouping must survive."""
+def test_catalog_order_matches_display_order():
+    """The UI renders the catalog as-is, so the familiar grouping must survive:
+    homemade baselines first, then the library trackers, then the single-object ones."""
     assert REGISTRY.ids() == [
-        "greedy_iou", "centroid",
+        "greedy_iou", "centroid", "sort",
         "bytetrack", "botsort", "ocsort", "deepocsort", "fasttrack", "tracktrack",
         "kcf", "csrt", "mosse", "mil", "medianflow", "nano", "vit", "dasiamrpn",
     ]
@@ -93,7 +95,7 @@ def test_default_params_keys_match_declared_params():
 
 def test_catalog_returns_exactly_the_frontend_keys():
     catalog = REGISTRY.catalog()
-    assert len(catalog) == 16
+    assert len(catalog) == len(EXPECTED_IDS)
     for entry in catalog:
         assert set(entry) == CATALOG_KEYS, entry.get("id")
         assert isinstance(entry["available"], bool)
