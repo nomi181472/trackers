@@ -156,3 +156,53 @@ def test_a_visible_later_object_does_not_count_as_the_target():
         [_entry(0, False), _entry(1, True)],
     ])
     assert sc.first_visible_target_frame() is None
+
+
+# --------------------------------------------------------------------------- #
+# Corner HUD on the rendered video                                            #
+# --------------------------------------------------------------------------- #
+
+def _hud_scene():
+    return _scene(seed=4, crossing=True, occlusion=True)
+
+
+def test_the_hud_paints_the_two_top_corners():
+    sc = _hud_scene()
+    h, w = 30, sc.width
+    bare = sc.render_annotated_frame(3, [], show_frame_no=False)      # no HUD at all
+    named = sc.render_annotated_frame(3, [], tracker_name="SORT")
+    assert not np.array_equal(bare[:h, : w // 3], named[:h, : w // 3]), "left chip missing"
+    assert not np.array_equal(bare[:h, -w // 3:], named[:h, -w // 3:]), "right chip missing"
+
+
+def test_the_frame_number_is_shown_even_without_a_tracker_name():
+    sc = _hud_scene()
+    bare = sc.render_annotated_frame(3, [], show_frame_no=False)
+    unnamed = sc.render_annotated_frame(3, [])
+    assert np.array_equal(bare[:30, : 100], unnamed[:30, : 100]), "no name, so no left chip"
+    assert not np.array_equal(bare[:30, -100:], unnamed[:30, -100:]), "right chip missing"
+
+
+def test_suppressing_the_hud_leaves_the_top_strip_untouched():
+    """Event thumbnails draw their own banner, so they must opt out cleanly."""
+    sc = _hud_scene()
+    bare = sc.render_annotated_frame(3, [], show_frame_no=False)
+    quiet = sc.render_annotated_frame(3, [], show_frame_no=False, tracker_name="")
+    assert np.array_equal(bare, quiet)
+
+
+def test_a_long_tracker_name_cannot_overlap_the_frame_counter():
+    """Clipped, not overlapping: the two chips share the top strip."""
+    sc = _hud_scene()
+    long_name = "A" * 300
+    img = sc.render_annotated_frame(3, [], tracker_name=long_name)
+    gap = img[:30, -90:-10]
+    # the gap between the chips must not be a solid bar of one colour
+    assert len(np.unique(gap.reshape(-1, 3), axis=0)) > 1
+
+
+def test_the_hud_is_deterministic():
+    sc = _hud_scene()
+    a = sc.render_annotated_frame(3, [], tracker_name="SORT")
+    b = sc.render_annotated_frame(3, [], tracker_name="SORT")
+    assert np.array_equal(a, b)

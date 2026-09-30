@@ -242,8 +242,49 @@ class Scenario:
         return None
 
     # ------------------------------------------------------------------ #
-    def render_annotated_frame(self, t: int, tracks=None, draw_gt=True, labels=True):
-        """Frame with optional tracker boxes (list of Track) and GT overlay."""
+    def _draw_hud(self, img, tracker_name: str, frame_no: str) -> None:
+        """Tracker name on the left, frame number on the right.
+
+        Drawn as filled chips rather than bare text: the scene background is
+        light sky, so white-on-nothing would be unreadable.  The name is clipped
+        so a long one can never run into the frame counter.
+        """
+        import cv2
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        scale, thick = 0.5, 1
+        pad = 5
+
+        def text_w(text):
+            (tw, _), _ = cv2.getTextSize(text, font, scale, thick)
+            return tw
+
+        def chip(text, x0, from_left):
+            (tw, th), base = cv2.getTextSize(text, font, scale, thick)
+            w = tw + 2 * pad
+            x = x0 if from_left else x0 - w
+            cv2.rectangle(img, (x, 2), (x + w, 2 + th + base + 6), (30, 30, 38), -1)
+            cv2.putText(img, text, (x + pad, 2 + th + 3), font, scale,
+                        (255, 255, 255), thick, cv2.LINE_AA)
+
+        if tracker_name:
+            room = img.shape[1] - 2 * pad - (text_w(frame_no) + 2 * pad) - 8
+            if text_w(tracker_name) > room:  # ellipsise rather than overlap
+                name = tracker_name
+                while name and text_w(name + "...") > room:
+                    name = name[:-1]
+                tracker_name = name + "..."
+            chip(tracker_name, 2, True)
+        chip(frame_no, img.shape[1] - 2, False)
+
+    # ------------------------------------------------------------------ #
+    def render_annotated_frame(self, t: int, tracks=None, draw_gt=True, labels=True,
+                               tracker_name: str = "", show_frame_no: bool = True):
+        """Frame with optional tracker boxes (list of Track) and GT overlay.
+
+        `tracker_name` and `show_frame_no` add the corner HUD used on the
+        per-tracker videos; callers that draw their own banner on top (event
+        thumbnails) switch the frame number off.
+        """
         import cv2
         img = self.frames[t].copy()
         gt = self.gt[t]
@@ -266,6 +307,9 @@ class Scenario:
         if self.occluder_box and draw_gt:
             x1, _, x2, _ = self.occluder_box
             cv2.line(img, (x1, 0), (x1, self.height), (200, 60, 60), 1, cv2.LINE_AA)  # hidden issue marker
+        # 0-based, so it lines up with the `frame` number on every reported event
+        if tracker_name or show_frame_no:
+            self._draw_hud(img, tracker_name, f"f {t}/{self.n_frames}")
         return img
 
 

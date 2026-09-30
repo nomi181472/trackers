@@ -99,7 +99,8 @@ def write_video(frames, path: str, fps: int):
 
 def render_event_thumb(scenario, t: int, tracks, event_text: str, out_path: str, highlight: bool = True):
     import cv2
-    img = scenario.render_annotated_frame(t, tracks, draw_gt=True, labels=True)
+    # no corner HUD here: the event banner below owns the top strip
+    img = scenario.render_annotated_frame(t, tracks, draw_gt=True, labels=True, show_frame_no=False)
     if highlight:
         cv2.rectangle(img, (0, 0), (img.shape[1], 34), (20, 20, 38), -1)
         cv2.putText(img, event_text[:82], (8, 24), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 215, 90), 1, cv2.LINE_AA)
@@ -195,7 +196,9 @@ def run_simulation(scenario, specs: list[dict], detection_params: dict,
         # ---- render annotated video ---- #
         annotated = []
         for t in range(T):
-            annotated.append(scenario.render_annotated_frame(t, track_frames[t], draw_gt=True, labels=True))
+            annotated.append(scenario.render_annotated_frame(t, track_frames[t], draw_gt=True,
+                                                             labels=True,
+                                                             tracker_name=meta["name"]))
         vid_name = f"{job_id}_{tid}.mp4"
         vid_path = os.path.join(out_dir, vid_name)
         codec = write_video(annotated, vid_path, scenario.fps)
