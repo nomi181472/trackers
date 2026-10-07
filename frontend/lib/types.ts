@@ -103,6 +103,17 @@ export interface Report {
   failed: boolean;
 }
 
+export interface FrameSummaryItem {
+  frame: number;
+  tracks: number;
+  gt: number;
+  matched: number;
+  fp: number;
+  fn: number;
+  idsw: number;
+  events?: string[];
+}
+
 export interface TrackerResult {
   tracker_id: string;
   name: string;
@@ -110,6 +121,7 @@ export interface TrackerResult {
   mode: string;
   metrics: Metrics;
   events: EventItem[];
+  frame_summary?: FrameSummaryItem[];
   report: Report;
   video_url: string;
   codec: string;

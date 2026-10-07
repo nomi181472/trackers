@@ -237,7 +237,7 @@ def _eval_multi(scenario, tracker_id, track_frames, dets_frames):
 
         frame_summary.append(dict(
             frame=t, tracks=len(tid_set), gt=len(visible),
-            matched=len(pairs), idsw=total_idsw,
+            matched=len(pairs), fp=fp, fn=fn, idsw=total_idsw,
             events=[e.type for e in events if e.frame == t],
         ))
 

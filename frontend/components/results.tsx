@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { mediaUrl } from "@/lib/api";
 import type { RealResult, SimulationResult, TrackerResult } from "@/lib/types";
 
@@ -33,6 +34,10 @@ export function ResultsView({ result }: { result: SimulationResult }) {
           <ResultCard key={r.tracker_id} r={r} fps={result.scenario.fps || 15} />
         ))}
       </div>
+
+      {result.results.length > 0 ? (
+        <MultiTrackerComparisonChart results={result.results} />
+      ) : null}
     </div>
   );
 }
@@ -55,8 +60,8 @@ export function ResultCard({ r, fps = 15 }: { r: TrackerResult; fps?: number }) 
         {typeof m.motp === "number" && isFinite(m.motp) ? <MSum label="MOTP" v={m.motp} best="low" /> : null}
         {typeof m.idf1 === "number" && isFinite(m.idf1) ? <MSum label="IDF1" v={m.idf1} best="high" /> : null}
         {typeof m.idsw === "number" && isFinite(m.idsw) ? <MSum label="ID switches" v={m.idsw} best="low" /> : null}
-        {typeof m.fp === "number" && isFinite(m.fp) ? <MSum label="FP" v={m.fp} best="low" /> : null}
-        {typeof m.fn === "number" && isFinite(m.fn) ? <MSum label="FN" v={m.fn} best="low" /> : null}
+        {typeof m.fp === "number" && isFinite(m.fp) ? <MSum label="FP (Ghosts)" v={m.fp} best="low" /> : null}
+        {typeof m.fn === "number" && isFinite(m.fn) ? <MSum label="FN (Misses)" v={m.fn} best="low" /> : null}
         {typeof m.mt === "number" && isFinite(m.mt) ? <MSum label="MT" v={m.mt} best="high" /> : null}
         {typeof m.ml === "number" && isFinite(m.ml) ? <MSum label="ML" v={m.ml} best="low" /> : null}
         {typeof m.accuracy === "number" && isFinite(m.accuracy) ? <MSum label="Accuracy" v={m.accuracy} best="high" /> : null}
@@ -64,6 +69,10 @@ export function ResultCard({ r, fps = 15 }: { r: TrackerResult; fps?: number }) 
         {typeof m.avg_time_ms === "number" && isFinite(m.avg_time_ms) ? <MSum label="Avg latency" v={m.avg_time_ms} unit="ms" best="low" /> : null}
         {typeof m.fps === "number" && isFinite(m.fps) ? <MSum label="Tracker speed" v={m.fps} unit="FPS" best="high" /> : null}
       </div>
+
+      {(typeof m.fp === "number" || typeof m.fn === "number" || typeof m.idsw === "number") ? (
+        <ErrorBreakdownBar fp={m.fp ?? 0} fn={m.fn ?? 0} idsw={m.idsw ?? 0} />
+      ) : null}
 
       {m.latencies?.length ? <LatencyGraph latencies={m.latencies} avgMs={m.avg_time_ms} /> : null}
 
@@ -167,6 +176,191 @@ function LatencyGraph({ latencies, avgMs }: { latencies: number[]; avgMs?: numbe
             points={points}
           />
         </svg>
+      </div>
+    </div>
+  );
+}
+
+function ErrorBreakdownBar({ fp, fn, idsw }: { fp: number; fn: number; idsw: number }) {
+  const total = fp + fn + idsw;
+  if (total === 0) {
+    return (
+      <div style={{ padding: "0 14px 8px", fontSize: 11, color: "var(--accent)" }}>
+        ✓ Zero errors (0 FP, 0 Misses, 0 ID switches)
+      </div>
+    );
+  }
+
+  const pFp = ((fp / total) * 100).toFixed(1);
+  const pFn = ((fn / total) * 100).toFixed(1);
+  const pIdsw = ((idsw / total) * 100).toFixed(1);
+
+  return (
+    <div style={{ padding: "0 14px 10px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4, fontSize: 11, color: "var(--muted)" }}>
+        <span>Error Breakdown ({total} total errors)</span>
+        <span>
+          <span style={{ color: "#ff7d8b" }}>● {fp} FP</span>{" "}
+          <span style={{ color: "#ffd07a", marginLeft: 6 }}>● {fn} FN</span>{" "}
+          <span style={{ color: "#8bd0ff", marginLeft: 6 }}>● {idsw} IDSW</span>
+        </span>
+      </div>
+      <div style={{ height: 8, background: "var(--bg-3)", borderRadius: 4, overflow: "hidden", display: "flex" }}>
+        {fp > 0 && <div style={{ width: `${pFp}%`, background: "#ff7d8b" }} title={`False Positives: ${fp} (${pFp}%)`} />}
+        {fn > 0 && <div style={{ width: `${pFn}%`, background: "#ffd07a" }} title={`Misses (FN): ${fn} (${pFn}%)`} />}
+        {idsw > 0 && <div style={{ width: `${pIdsw}%`, background: "#8bd0ff" }} title={`ID Switches: ${idsw} (${pIdsw}%)`} />}
+      </div>
+    </div>
+  );
+}
+
+const TRACKER_COLORS = [
+  "#38bdf8", // Sky blue
+  "#34d399", // Emerald
+  "#f472b6", // Pink
+  "#fbbf24", // Amber
+  "#a78bfa", // Purple
+  "#fb923c", // Orange
+  "#4ade80", // Green
+  "#818cf8", // Indigo
+];
+
+function MultiTrackerComparisonChart({ results }: { results: TrackerResult[] }) {
+  const [metricTab, setMetricTab] = useState<"errors" | "rates">("errors");
+
+  // Trackers with errors or rates to compare
+  const items = results.map((r, i) => ({
+    id: r.tracker_id,
+    name: r.name,
+    color: TRACKER_COLORS[i % TRACKER_COLORS.length],
+    fp: r.metrics.fp ?? 0,
+    fn: r.metrics.fn ?? 0,
+    idsw: r.metrics.idsw ?? 0,
+    mota: r.metrics.mota != null ? Math.max(0, r.metrics.mota * 100) : 0,
+    idf1: r.metrics.idf1 != null ? Math.max(0, r.metrics.idf1 * 100) : 0,
+  }));
+
+  const maxError = Math.max(...items.flatMap((it) => [it.fp, it.fn, it.idsw]), 1);
+
+  return (
+    <div className="panel" style={{ marginTop: 18 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+        <h3 style={{ margin: 0 }}>📊 Multi-Tracker Comparison Chart</h3>
+        <div style={{ display: "flex", gap: 6 }}>
+          <button
+            className={`btn ghost ${metricTab === "errors" ? "active" : ""}`}
+            style={{ padding: "4px 10px", fontSize: 11, background: metricTab === "errors" ? "var(--bg-3)" : undefined }}
+            onClick={() => setMetricTab("errors")}
+          >
+            Error Comparison (FP / FN / IDSW)
+          </button>
+          <button
+            className={`btn ghost ${metricTab === "rates" ? "active" : ""}`}
+            style={{ padding: "4px 10px", fontSize: 11, background: metricTab === "rates" ? "var(--bg-3)" : undefined }}
+            onClick={() => setMetricTab("rates")}
+          >
+            Accuracy Comparison (MOTA / IDF1 %)
+          </button>
+        </div>
+      </div>
+
+      {metricTab === "errors" ? (
+        <div>
+          <div style={{ display: "grid", gridTemplateColumns: `repeat(${items.length}, 1fr)`, gap: 16, alignItems: "flex-end", height: 160, padding: "10px 10px 0", background: "var(--bg-3)", borderRadius: 8, border: "1px solid var(--line)" }}>
+            {items.map((it) => (
+              <div key={it.id} style={{ display: "flex", flexDirection: "column", alignItems: "center", height: "100%", justifyContent: "flex-end" }}>
+                <div style={{ display: "flex", gap: 4, alignItems: "flex-end", width: "100%", justifyContent: "center", height: 120 }}>
+                  {/* FP bar */}
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: "26%" }} title={`${it.name} FP: ${it.fp}`}>
+                    <span style={{ fontSize: 9.5, color: "#ff7d8b", marginBottom: 2 }}>{it.fp}</span>
+                    <div style={{ width: "100%", height: `${Math.max(4, (it.fp / maxError) * 100)}px`, background: "#ff7d8b", borderRadius: "3px 3px 0 0" }} />
+                    <span style={{ fontSize: 9, color: "var(--muted)", marginTop: 2 }}>FP</span>
+                  </div>
+                  {/* FN bar */}
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: "26%" }} title={`${it.name} FN (Misses): ${it.fn}`}>
+                    <span style={{ fontSize: 9.5, color: "#ffd07a", marginBottom: 2 }}>{it.fn}</span>
+                    <div style={{ width: "100%", height: `${Math.max(4, (it.fn / maxError) * 100)}px`, background: "#ffd07a", borderRadius: "3px 3px 0 0" }} />
+                    <span style={{ fontSize: 9, color: "var(--muted)", marginTop: 2 }}>FN</span>
+                  </div>
+                  {/* IDSW bar */}
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: "26%" }} title={`${it.name} IDSW: ${it.idsw}`}>
+                    <span style={{ fontSize: 9.5, color: "#8bd0ff", marginBottom: 2 }}>{it.idsw}</span>
+                    <div style={{ width: "100%", height: `${Math.max(4, (it.idsw / maxError) * 100)}px`, background: "#8bd0ff", borderRadius: "3px 3px 0 0" }} />
+                    <span style={{ fontSize: 9, color: "var(--muted)", marginTop: 2 }}>ID</span>
+                  </div>
+                </div>
+                <div style={{ marginTop: 6, fontSize: 11, fontWeight: 600, color: it.color, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", width: "100%" }}>
+                  {it.name}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Bottom Legends */}
+          <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 18, marginTop: 14, paddingTop: 10, borderTop: "1px dashed var(--line)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+              <div style={{ width: 10, height: 10, background: "#ff7d8b", borderRadius: 2 }} />
+              <span><b>False Positives (FP)</b> — Hallucinated / ghost detections</span>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+              <div style={{ width: 10, height: 10, background: "#ffd07a", borderRadius: 2 }} />
+              <span><b>False Negatives (FN)</b> — Missed / lost target objects</span>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+              <div style={{ width: 10, height: 10, background: "#8bd0ff", borderRadius: 2 }} />
+              <span><b>ID Switches (IDSW)</b> — Identity swaps across targets</span>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div>
+          <div style={{ display: "grid", gridTemplateColumns: `repeat(${items.length}, 1fr)`, gap: 16, alignItems: "flex-end", height: 160, padding: "10px 10px 0", background: "var(--bg-3)", borderRadius: 8, border: "1px solid var(--line)" }}>
+            {items.map((it) => (
+              <div key={it.id} style={{ display: "flex", flexDirection: "column", alignItems: "center", height: "100%", justifyContent: "flex-end" }}>
+                <div style={{ display: "flex", gap: 6, alignItems: "flex-end", width: "100%", justifyContent: "center", height: 120 }}>
+                  {/* MOTA bar */}
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: "36%" }} title={`${it.name} MOTA: ${it.mota.toFixed(1)}%`}>
+                    <span style={{ fontSize: 9.5, color: "#61e0a9", marginBottom: 2 }}>{it.mota.toFixed(0)}%</span>
+                    <div style={{ width: "100%", height: `${Math.max(4, (it.mota / 100) * 100)}px`, background: "#61e0a9", borderRadius: "3px 3px 0 0" }} />
+                    <span style={{ fontSize: 9, color: "var(--muted)", marginTop: 2 }}>MOTA</span>
+                  </div>
+                  {/* IDF1 bar */}
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: "36%" }} title={`${it.name} IDF1: ${it.idf1.toFixed(1)}%`}>
+                    <span style={{ fontSize: 9.5, color: "#38bdf8", marginBottom: 2 }}>{it.idf1.toFixed(0)}%</span>
+                    <div style={{ width: "100%", height: `${Math.max(4, (it.idf1 / 100) * 100)}px`, background: "#38bdf8", borderRadius: "3px 3px 0 0" }} />
+                    <span style={{ fontSize: 9, color: "var(--muted)", marginTop: 2 }}>IDF1</span>
+                  </div>
+                </div>
+                <div style={{ marginTop: 6, fontSize: 11, fontWeight: 600, color: it.color, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", width: "100%" }}>
+                  {it.name}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Bottom Legends */}
+          <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 18, marginTop: 14, paddingTop: 10, borderTop: "1px dashed var(--line)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+              <div style={{ width: 10, height: 10, background: "#61e0a9", borderRadius: 2 }} />
+              <span><b>MOTA</b> — Overall Multi-Object Tracking Accuracy (higher is better)</span>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+              <div style={{ width: 10, height: 10, background: "#38bdf8", borderRadius: 2 }} />
+              <span><b>IDF1</b> — Identity F1 consistency score (higher is better)</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Tracker identity color legends at the very bottom */}
+      <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 12, marginTop: 12, paddingTop: 10, borderTop: "1px solid var(--line)" }}>
+        <span style={{ fontSize: 11.5, color: "var(--muted)", marginRight: 4 }}>Trackers:</span>
+        {items.map((it) => (
+          <div key={it.id} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11.5 }}>
+            <span style={{ width: 8, height: 8, borderRadius: "50%", background: it.color }} />
+            <span style={{ color: "var(--text)", fontWeight: 500 }}>{it.name}</span>
+          </div>
+        ))}
       </div>
     </div>
   );
