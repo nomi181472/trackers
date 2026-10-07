@@ -4,7 +4,7 @@ import sys
 # Ensure backend package is in python sys.path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "backend"))
 
-# ZeroGPU integration (satisfies Hugging Face's @spaces.GPU scanner during startup)
+# ZeroGPU integration
 try:
     import spaces
 except ImportError:
@@ -18,10 +18,9 @@ except ImportError:
 import gradio as gr
 from app.main import app as fastapi_app
 
-# Top-level GPU decorated function so ZeroGPU hardware scanner validates the space
+# Top-level GPU decorated function
 @spaces.GPU
 def gpu_compute_keepalive(x: str = "") -> str:
-    """ZeroGPU hook for hardware allocation."""
     return f"Active: {x}"
 
 # Define the Gradio interface
@@ -40,12 +39,14 @@ with gr.Blocks(title="Tracker Failure Simulator Backend") as demo:
         *This Hugging Face Space powers the backend and compute engine for the Next.js frontend.*
         """)
     
-    # Hidden or utility button registering the GPU function with Gradio Blocks
     trigger_btn = gr.Button("Status Check", visible=False)
     output_txt = gr.Textbox(visible=False)
     trigger_btn.click(fn=gpu_compute_keepalive, inputs=output_txt, outputs=output_txt)
 
-# Mount FastAPI routers
-demo.app.include_router(fastapi_app.router)
+# gr.mount_gradio_app mounts the Gradio interface to the FastAPI application (at /),
+# preserving all of FastAPI's native endpoints (/api/*, /docs, /openapi.json).
+app = gr.mount_gradio_app(fastapi_app, demo, path="/")
 
-demo.launch(server_name="0.0.0.0", server_port=7860, ssr_mode=False)
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=7860)
