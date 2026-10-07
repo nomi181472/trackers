@@ -12,6 +12,6 @@ from app.core.plugins.registry import REGISTRY, PluginRegistry, build_engine, re
 # Importing the concrete modules is what actually populates REGISTRY.  This must
 # happen *after* the re-exports above, which is why `registry.py` lives outside
 # `__init__.py` -- otherwise every plugin import would re-enter this module.
-from app.core.plugins import custom, ultralytics, opencv  # noqa: E402,F401
+from app.core.plugins import custom, ultralytics, opencv, vector_embed  # noqa: E402,F401
 
 __all__ = ["Engine", "TrackerPlugin", "PluginRegistry", "REGISTRY", "build_engine", "register"]

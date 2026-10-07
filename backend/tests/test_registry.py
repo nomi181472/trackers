@@ -9,7 +9,7 @@ from app.core.plugins.registry import register
 from app.core.registry import default_params, get_tracker, tracker_ids
 
 EXPECTED_IDS = {
-    "greedy_iou", "centroid", "sort",
+    "greedy_iou", "centroid", "sort", "embed_sort",
     "bytetrack", "botsort", "ocsort", "deepocsort", "fasttrack", "tracktrack",
     "kcf", "csrt", "mosse", "mil", "medianflow", "nano", "vit", "dasiamrpn",
 }
@@ -43,6 +43,7 @@ def test_catalog_order_matches_display_order():
         "greedy_iou", "centroid", "sort",
         "bytetrack", "botsort", "ocsort", "deepocsort", "fasttrack", "tracktrack",
         "kcf", "csrt", "mosse", "mil", "medianflow", "nano", "vit", "dasiamrpn",
+        "embed_sort",
     ]
 
 

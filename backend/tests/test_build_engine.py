@@ -72,10 +72,14 @@ def test_previously_broken_ids_build_when_the_weights_are_present(monkeypatch):
         assert engine.tracker_id == tid
 
 
+from app.core.plugins.vector_embed import VectorEmbedderEngine
+
+
 def test_custom_engines_are_the_expected_classes():
     assert isinstance(build_engine("greedy_iou", {}, FPS), GreedyIoUTracker)
     assert isinstance(build_engine("centroid", {}, FPS), CentroidTracker)
     assert isinstance(build_engine("sort", {}, FPS), SortTracker)
+    assert isinstance(build_engine("embed_sort", {}, FPS), VectorEmbedderEngine)
 
 
 def test_ultralytics_engines_are_the_expected_class():
