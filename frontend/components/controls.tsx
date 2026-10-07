@@ -170,3 +170,34 @@ export function TooltipIcon({ label, text, hint }: { label: string; text: string
     </span>
   );
 }
+
+export function SelectRow({
+  label,
+  value,
+  options,
+  onChange,
+  hint,
+}: {
+  label: string;
+  value: string;
+  options: { value: string; label: string }[];
+  onChange: (v: string) => void;
+  hint?: string;
+}) {
+  return (
+    <div className="field">
+      <div className="row">
+        <span>
+          {label} {hint ? <TooltipIcon label={label} text={hint} /> : null}
+        </span>
+      </div>
+      <select value={value} onChange={(e) => onChange(e.target.value)}>
+        {options.map((opt) => (
+          <option key={opt.value} value={opt.value}>
+            {opt.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}

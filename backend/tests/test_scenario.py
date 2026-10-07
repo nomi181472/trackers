@@ -206,3 +206,27 @@ def test_the_hud_is_deterministic():
     a = sc.render_annotated_frame(3, [], tracker_name="SORT")
     b = sc.render_annotated_frame(3, [], tracker_name="SORT")
     assert np.array_equal(a, b)
+
+
+def test_object_types_person_and_car_build_valid_scenes():
+    for obj_type in ("person", "car", "ball"):
+        sc = _scene(object_type=obj_type, seed=7)
+        assert sc.meta["object_type"] == obj_type
+        assert sc.frames.shape == (sc.n_frames, sc.height, sc.width, 3)
+        for frame in sc.gt:
+            assert len(frame) == sc.num_objects
+            for e in frame:
+                x1, y1, x2, y2 = e["box"]
+                assert all(isinstance(v, int) for v in e["box"])
+                assert x2 > x1 and y2 > y1
+                assert e["radius"] > 0
+                if obj_type == "person":
+                    # Person skeleton is taller than it is wide
+                    assert (y2 - y1) > (x2 - x1)
+                elif obj_type == "car":
+                    # Car is wider than it is tall
+                    assert (x2 - x1) > (y2 - y1)
+                elif obj_type == "ball":
+                    # Ball is square bounding box
+                    assert (x2 - x1) == (y2 - y1)
+

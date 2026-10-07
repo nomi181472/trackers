@@ -185,3 +185,14 @@ def test_a_high_threshold_suppresses_every_detection(scene):
     det = SimDetector(scene, {"jitter": 0, "conf": 1.01})
     for t in range(scene.n_frames):
         assert len(det.dets_for_frame(t)) == 0
+
+
+def test_simulation_runs_on_person_and_car_scenarios():
+    for obj_type in ("person", "car"):
+        sc = Scenario({**TINY, "seed": 4, "object_type": obj_type})
+        res = _run(sc, ["greedy_iou", "centroid"])
+        assert res["trackers"] == ["greedy_iou", "centroid"]
+        for r in res["results"]:
+            assert "error" not in r, f"{r['tracker_id']}: {r.get('error')}"
+            assert r["metrics"]["mota"] is not None
+

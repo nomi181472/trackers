@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import type { Catalog, ParamValues, ScenarioMeta, SimulationResult, TrackerMeta } from "@/lib/types";
 import { getCatalog, scenarioPreview, startSimulation, pollUntilDone, uploadVideo, startRealJob, mediaUrl } from "@/lib/api";
-import { SliderRow, BoolRow, ParamControl } from "@/components/controls";
+import { SliderRow, BoolRow, ParamControl, SelectRow } from "@/components/controls";
 import { TrackerPicker } from "@/components/trackerPicker";
 import { ResultsView, CompareTable, RealResultsView } from "@/components/results";
 import type { JobStatus } from "@/lib/types";
@@ -46,7 +46,7 @@ const PRESETS: Record<string, { label: string; desc: string; scenario: ParamValu
 };
 
 const SCENARIO_DEFAULTS: ParamValues = {
-  seed: 4, fps: 15, duration_seconds: 6, num_objects: 3, crossing: true,
+  seed: 4, fps: 15, duration_seconds: 6, num_objects: 3, object_type: "person", crossing: true,
   occlusion: true, occluder_width: 70, camera_shake: false, shake_px: 10,
   blur: false, blur_sigma: 3, similar_colors: false,
 };
@@ -168,8 +168,20 @@ function SimulatorTab({ catalog }: { catalog: Catalog }) {
             ))}
           </div>
 
+          <SelectRow
+            label="Object type"
+            value={String(scenario.object_type || "person")}
+            options={[
+              { value: "person", label: "🏃 Person (Skeleton)" },
+              { value: "car", label: "🚗 Car" },
+              { value: "ball", label: "⚽ Ball" },
+            ]}
+            hint="Choose what to simulate: animated walking skeleton, car, or ball."
+            onChange={(v) => setScenario((s) => ({ ...s, object_type: v }))}
+          />
+
           <SliderRow label="Seed" min={0} max={99} step={1} value={Number(scenario.seed)} hint="Changes the random layout of the scene." onChange={(v) => setScenario((s) => ({ ...s, seed: v }))} />
-          <SliderRow label="Objects" min={1} max={6} step={1} value={Number(scenario.num_objects)} hint="How many balls to track." onChange={(v) => setScenario((s) => ({ ...s, num_objects: v }))} />
+          <SliderRow label="Objects" min={1} max={6} step={1} value={Number(scenario.num_objects)} hint="How many objects to track." onChange={(v) => setScenario((s) => ({ ...s, num_objects: v }))} />
           <SliderRow label="Duration" min={2} max={15} step={1} value={Number(scenario.duration_seconds)} unit="s" hint="Keep it short while experimenting." onChange={(v) => setScenario((s) => ({ ...s, duration_seconds: v }))} />
           <SliderRow label="Frame rate" min={5} max={30} step={1} value={Number(scenario.fps)} unit="fps" onChange={(v) => setScenario((s) => ({ ...s, fps: v }))} />
 
@@ -186,7 +198,7 @@ function SimulatorTab({ catalog }: { catalog: Catalog }) {
           {scenario.blur ? (
             <SliderRow label="Blur strength" min={1} max={7} step={0.5} value={Number(scenario.blur_sigma)} onChange={(v) => setScenario((s) => ({ ...s, blur_sigma: v }))} />
           ) : null}
-          <BoolRow label="Look-alikes" text="All balls the same colour → appearance gives no clues." value={Boolean(scenario.similar_colors)} onChange={(v) => setScenario((s) => ({ ...s, similar_colors: v }))} />
+          <BoolRow label="Look-alikes" text="All objects the same colour → appearance gives no clues." value={Boolean(scenario.similar_colors)} onChange={(v) => setScenario((s) => ({ ...s, similar_colors: v }))} />
 
           <button className="btn ghost" style={{ marginTop: 4 }} onClick={previewIt} disabled={running !== null}>
             Preview scene
