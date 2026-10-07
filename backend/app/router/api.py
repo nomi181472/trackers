@@ -155,8 +155,8 @@ def job_status(jid: str):
     j = jobs.get_job(jid)
     if j is None:
         raise HTTPException(status_code=404, detail="no such job")
-    # Allow-list, not blacklist: `payload` and `traceback` are internal, and a
-    # field added to the job dict later must not leak by default.
+    # Allow-list, not blacklist: `payload` and `traceback` are internal and logged to
+    # container stdout/files, and must not leak by default to general job pollers.
     return {k: j.get(k) for k in ("id", "kind", "status", "progress",
                                   "message", "detail", "error", "result")}
 
@@ -173,3 +173,76 @@ def media(name: str):
 @router.get("/defaults")
 def defaults():
     return {"detection": DETECTION_DEFAULTS}
+
+
+@router.get("/logs/files")
+def list_log_files():
+    """List available daily log files sorted from newest to oldest."""
+    config.LOGS_DIR.mkdir(parents=True, exist_ok=True)
+    files = sorted(config.LOGS_DIR.glob("app_*.log"), reverse=True)
+    res = []
+    for f in files:
+        try:
+            stat = f.stat()
+            res.append({
+                "filename": f.name,
+                "date": f.name.replace("app_", "").replace(".log", ""),
+                "size_bytes": stat.st_size,
+                "modified_at": stat.st_mtime,
+            })
+        except OSError:
+            continue
+    return {"files": res}
+
+
+@router.get("/logs")
+def get_log_lines(
+    file: str | None = None,
+    cursor: int | None = None,
+    limit: int = 50,
+):
+    """Retrieve lines with cursor-based pagination.
+    
+    - `file`: name of the log file (e.g. app_2026-10-07.log). Defaults to latest log file.
+    - `cursor`: line offset (0-indexed). If omitted, loads the newest lines from the bottom.
+      Returns `next_cursor` pointing to older lines so scrolling down continues backward.
+    - `limit`: number of lines per page (default 50, max 200).
+    """
+    config.LOGS_DIR.mkdir(parents=True, exist_ok=True)
+    if not file:
+        available = sorted(config.LOGS_DIR.glob("app_*.log"), reverse=True)
+        if not available:
+            return {"file": None, "lines": [], "next_cursor": None, "total_lines": 0}
+        target_path = available[0]
+    else:
+        # Prevent directory traversal
+        clean_name = os.path.basename(file)
+        target_path = config.LOGS_DIR / clean_name
+
+    if not target_path.exists() or not target_path.is_file():
+        raise HTTPException(status_code=404, detail=f"Log file '{file}' not found")
+
+    limit = min(max(1, limit), 200)
+
+    try:
+        with open(target_path, "r", encoding="utf-8", errors="replace") as f:
+            all_lines = f.readlines()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed reading log file: {e}")
+
+    total = len(all_lines)
+    # Cursor is the upper bound line index for older pagination
+    end = cursor if (cursor is not None and 0 <= cursor <= total) else total
+    start = max(0, end - limit)
+    
+    chunk = [line.rstrip("\r\n") for line in all_lines[start:end]]
+    next_cursor = start if start > 0 else None
+
+    return {
+        "file": target_path.name,
+        "lines": chunk,
+        "next_cursor": next_cursor,
+        "total_lines": total,
+        "start_line": start,
+        "end_line": end,
+    }

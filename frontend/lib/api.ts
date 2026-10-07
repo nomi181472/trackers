@@ -71,3 +71,20 @@ export async function pollUntilDone(jobId: string, onProgress: (j: JobStatus) =>
     await new Promise((r) => setTimeout(r, 700));
   }
 }
+
+export function getLogFiles(): Promise<{ files: import("./types").LogFileInfo[] }> {
+  return http("/api/logs/files");
+}
+
+export function getLogLines(params: {
+  file?: string;
+  cursor?: number | null;
+  limit?: number;
+}): Promise<import("./types").LogPage> {
+  const q = new URLSearchParams();
+  if (params.file) q.set("file", params.file);
+  if (params.cursor !== undefined && params.cursor !== null) q.set("cursor", String(params.cursor));
+  if (params.limit) q.set("limit", String(params.limit));
+  const query = q.toString();
+  return http(`/api/logs${query ? `?${query}` : ""}`);
+}

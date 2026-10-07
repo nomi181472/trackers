@@ -157,3 +157,19 @@ export interface ParamValues {
 export interface ParamGroup {
   [key: string]: ParamValues;
 }
+
+export interface LogFileInfo {
+  filename: string;
+  date: string;
+  size_bytes: number;
+  modified_at: number;
+}
+
+export interface LogPage {
+  file: string | null;
+  lines: string[];
+  next_cursor: number | null;
+  total_lines: number;
+  start_line: number;
+  end_line: number;
+}

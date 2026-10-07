@@ -56,9 +56,68 @@ Tune synthetic scene parameters, configure hyperparameter knobs with tooltips, a
   - **Motion Blur**: Gaussian blur kernels that degrade detector confidence.
   - **Look-alikes**: Eliminate color variance to stress spatial/appearance association.
 - **📊 Scientific Metrics & Explainable Reports**:
-  - Full MOT evaluation: **MOTA**, **MOTP**, **IDF1**, **IDSW**, **False Positives**, **Misses**.
+  - Full MOT evaluation: **MOTA**, **MOTP**, **IDF1**, **IDP**, **IDR**, **IDSW**, **False Positives**, **Misses**, **Latency (ms)**, and **FPS**.
   - Natural-language diagnosis: Plain-language explanations of failure root causes with actionable parameter recommendations.
+  - Interactive multi-tracker comparison charts with trade-off analysis (Accuracy vs Latency vs Error Burden).
   - Clickable event timeline with frame-accurate thumbnail previews and video seeking.
+
+---
+
+## 📐 Evaluation Metrics & Mathematical Formulas
+
+The simulator evaluates all trackers rigorously against frame-accurate ground truth without black-box dependencies.
+
+### 1. MOTA (Multiple Object Tracking Accuracy)
+Measures the overall tracking coverage and detection accuracy across all frames:
+
+$$\text{MOTA} = 1 - \frac{\sum_{t} (\text{FP}_t + \text{FN}_t + \text{IDSW}_t)}{\sum_{t} \text{GT}_t}$$
+
+* **$\text{FP}_t$ (False Positives / Ghosts)**: Detections or tracks created by the tracker where no real object exists.
+* **$\text{FN}_t$ (False Negatives / Misses)**: Ground-truth objects that the tracker failed to detect or track.
+* **$\text{IDSW}_t$ (ID Switches)**: Times an active track identity swapped to a different object.
+* **$\text{GT}_t$**: Total visible ground-truth objects at frame $t$.
+
+---
+
+### 2. MOTP (Multiple Object Tracking Precision)
+Measures the spatial bounding box overlap precision between matched tracks and ground truth:
+
+$$\text{MOTP} = \frac{\sum_{t, i} \text{IoU}(b_{t, i}, g_{t, i})}{\sum_{t} |M_t|}$$
+
+Where $\text{IoU}(b, g) = \frac{\text{Area}(b \cap g)}{\text{Area}(b \cup g)}$ and $|M_t|$ is the number of matched pairs at frame $t$.
+
+---
+
+### 3. IDF1 (Identification F1 Score)
+Measures global trajectory identity preservation over the entire sequence by computing the optimal global bipartite matching between ground-truth trajectories and predicted tracks:
+
+$$\text{IDF1} = \frac{2 \cdot \text{IDTP}}{2 \cdot \text{IDTP} + \text{IDFP} + \text{IDFN}}$$
+
+Where:
+* **$\text{IDTP}$ (ID True Positives)**: Frames where the object is tracked with its globally assigned primary track ID.
+* **$\text{IDFN}$ (ID False Negatives)**: Frames where the object is missed or assigned to the wrong track ID.
+* **$\text{IDFP}$ (ID False Positives)**: Frames where the track ID is assigned to the wrong object or empty space.
+
+Related Identification Metrics:
+* **$\text{ID Precision (IDP)}$**: $\text{IDP} = \frac{\text{IDTP}}{\text{IDTP} + \text{IDFP}}$
+* **$\text{ID Recall (IDR)}$**: $\text{IDR} = \frac{\text{IDTP}}{\text{IDTP} + \text{IDFN}}$
+
+---
+
+### 4. Speed & Latency Benchmarks
+* **Average Latency**: Average per-frame execution time of the tracker engine update:
+  $$\text{Latency} = \frac{1}{T} \sum_{t=1}^{T} \Delta t_{\text{update}} \quad (\text{ms/frame})$$
+* **Throughput (FPS)**: Effective tracking speed:
+  $$\text{FPS} = \frac{1000}{\text{Average Latency (ms)}}$$
+
+---
+
+### 5. ⚖️ Interactive Trade-off Analysis (Accuracy vs Latency vs Errors)
+The built-in multi-tracker comparison chart evaluates algorithm efficiency across three dimensions:
+* **Vertical Axis ($Y$)**: MOTA Accuracy percentage ($0\% \to 100\%$, higher is better).
+* **Horizontal Axis ($X$)**: Average per-frame latency in ms (supports both **Logarithmic** and **Linear** scales, lower is faster).
+* **Bubble Radius (Size)**: Total error burden $\text{Radius} \propto \text{FP} + \text{FN} + \text{IDSW}$. A compact bubble denotes a clean, resilient tracking run; a large bubble highlights heavy track fragmentation.
+* **★ Sweet Spot (Top-Left Quadrant)**: High MOTA Accuracy paired with sub-millisecond execution latency.
 
 ---
 

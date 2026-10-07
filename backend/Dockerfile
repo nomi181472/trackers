@@ -2,6 +2,10 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
+# Ensure Python unbuffered mode so all logs and exception tracebacks
+# flush immediately to Hugging Face Spaces log viewers
+ENV PYTHONUNBUFFERED=1
+
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     build-essential \

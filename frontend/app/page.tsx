@@ -53,8 +53,10 @@ const SCENARIO_DEFAULTS: ParamValues = {
 
 /* ------------------------------------------------------------------ */
 
+import { LogsView } from "@/components/logsView";
+
 export default function Home() {
-  const [tab, setTab] = useState<"sim" | "real">("sim");
+  const [tab, setTab] = useState<"sim" | "real" | "logs">("sim");
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [catalogErr, setCatalogErr] = useState<string | null>(null);
 
@@ -73,9 +75,14 @@ export default function Home() {
         <div className={`tab ${tab === "real" ? "active" : ""}`} onClick={() => setTab("real")}>
           🎥 Real video
         </div>
+        <div className={`tab ${tab === "logs" ? "active" : ""}`} onClick={() => setTab("logs")}>
+          📋 Server Logs
+        </div>
       </div>
       {catalogErr ? <div className="err">Can&apos;t reach the backend: {catalogErr}. Start it with <span className="mono">uvicorn app.main:app --port 8000</span> in backend/.</div> : null}
-      {catalog ? (
+      {tab === "logs" ? (
+        <LogsView />
+      ) : catalog ? (
         tab === "sim" ? (
           <SimulatorTab catalog={catalog} />
         ) : (
