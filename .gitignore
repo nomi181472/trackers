@@ -18,3 +18,5 @@ __pycache__/
 .kilo/
 backend/data/logs/app.log
 backend/data/logs/app_2026-10-07.log
+hf
+hf.pub
