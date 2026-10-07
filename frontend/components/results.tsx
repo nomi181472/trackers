@@ -226,45 +226,190 @@ const TRACKER_COLORS = [
 ];
 
 function MultiTrackerComparisonChart({ results }: { results: TrackerResult[] }) {
-  const [metricTab, setMetricTab] = useState<"errors" | "rates">("errors");
+  const [metricTab, setMetricTab] = useState<"tradeoff" | "errors" | "rates" | "latency">("tradeoff");
 
-  // Trackers with errors or rates to compare
-  const items = results.map((r, i) => ({
-    id: r.tracker_id,
-    name: r.name,
-    color: TRACKER_COLORS[i % TRACKER_COLORS.length],
-    fp: r.metrics.fp ?? 0,
-    fn: r.metrics.fn ?? 0,
-    idsw: r.metrics.idsw ?? 0,
-    mota: r.metrics.mota != null ? Math.max(0, r.metrics.mota * 100) : 0,
-    idf1: r.metrics.idf1 != null ? Math.max(0, r.metrics.idf1 * 100) : 0,
-  }));
+  // Trackers with errors, rates, and latency to compare
+  const items = results.map((r, i) => {
+    const totalErrors = (r.metrics.fp ?? 0) + (r.metrics.fn ?? 0) + (r.metrics.idsw ?? 0);
+    return {
+      id: r.tracker_id,
+      name: r.name,
+      color: TRACKER_COLORS[i % TRACKER_COLORS.length],
+      fp: r.metrics.fp ?? 0,
+      fn: r.metrics.fn ?? 0,
+      idsw: r.metrics.idsw ?? 0,
+      totalErrors,
+      mota: r.metrics.mota != null ? Math.max(0, r.metrics.mota * 100) : 0,
+      idf1: r.metrics.idf1 != null ? Math.max(0, r.metrics.idf1 * 100) : 0,
+      avg_time_ms: r.metrics.avg_time_ms ?? 0,
+      fps: r.metrics.fps ?? 0,
+    };
+  });
 
   const maxError = Math.max(...items.flatMap((it) => [it.fp, it.fn, it.idsw]), 1);
+  const maxTotalErrors = Math.max(...items.map((it) => it.totalErrors), 1);
+  const maxLatency = Math.max(...items.map((it) => it.avg_time_ms), 1);
+  const slowestLatency = Math.max(...items.map((it) => it.avg_time_ms));
+
+  // Trade-off 2D plot bounds
+  const plotWidth = 560;
+  const plotHeight = 220;
+  const padLeft = 65;
+  const padRight = 35;
+  const padTop = 30;
+  const padBottom = 45;
 
   return (
     <div className="panel" style={{ marginTop: 18 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
         <h3 style={{ margin: 0 }}>📊 Multi-Tracker Comparison Chart</h3>
-        <div style={{ display: "flex", gap: 6 }}>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <button
+            className={`btn ghost ${metricTab === "tradeoff" ? "active" : ""}`}
+            style={{ padding: "4px 10px", fontSize: 11, background: metricTab === "tradeoff" ? "var(--bg-3)" : undefined }}
+            onClick={() => setMetricTab("tradeoff")}
+          >
+            ⚖️ Trade-off (Latency vs Accuracy)
+          </button>
           <button
             className={`btn ghost ${metricTab === "errors" ? "active" : ""}`}
             style={{ padding: "4px 10px", fontSize: 11, background: metricTab === "errors" ? "var(--bg-3)" : undefined }}
             onClick={() => setMetricTab("errors")}
           >
-            Error Comparison (FP / FN / IDSW)
+            Error Breakdown (FP / FN / IDSW)
           </button>
           <button
             className={`btn ghost ${metricTab === "rates" ? "active" : ""}`}
             style={{ padding: "4px 10px", fontSize: 11, background: metricTab === "rates" ? "var(--bg-3)" : undefined }}
             onClick={() => setMetricTab("rates")}
           >
-            Accuracy Comparison (MOTA / IDF1 %)
+            Accuracy (MOTA / IDF1 %)
+          </button>
+          <button
+            className={`btn ghost ${metricTab === "latency" ? "active" : ""}`}
+            style={{ padding: "4px 10px", fontSize: 11, background: metricTab === "latency" ? "var(--bg-3)" : undefined }}
+            onClick={() => setMetricTab("latency")}
+          >
+            ⚡ Latency & Speed (ms / FPS)
           </button>
         </div>
       </div>
 
-      {metricTab === "errors" ? (
+      {metricTab === "tradeoff" ? (
+        <div>
+          <div style={{ background: "var(--bg-3)", border: "1px solid var(--line)", borderRadius: 8, padding: "12px 14px", position: "relative" }}>
+            <svg viewBox={`0 0 ${plotWidth} ${plotHeight}`} style={{ width: "100%", height: "auto", display: "block" }}>
+              {/* Optimal frontier quadrant highlight (High Accuracy + Low Latency = Top Left) */}
+              <rect
+                x={padLeft}
+                y={padTop}
+                width={(plotWidth - padLeft - padRight) / 2}
+                height={(plotHeight - padTop - padBottom) / 2}
+                fill="rgba(97, 224, 169, 0.05)"
+                rx={4}
+              />
+              <text x={padLeft + 8} y={padTop + 14} fill="#61e0a9" fontSize={9.5} fontWeight={600}>
+                ★ SWEET SPOT (Fast & Accurate)
+              </text>
+
+              {/* Grid lines */}
+              <line x1={padLeft} y1={plotHeight - padBottom} x2={plotWidth - padRight} y2={plotHeight - padBottom} stroke="var(--line)" strokeWidth={1.5} />
+              <line x1={padLeft} y1={padTop} x2={padLeft} y2={plotHeight - padBottom} stroke="var(--line)" strokeWidth={1.5} />
+
+              <line x1={padLeft} y1={(padTop + (plotHeight - padBottom)) / 2} x2={plotWidth - padRight} y2={(padTop + (plotHeight - padBottom)) / 2} stroke="var(--line)" strokeDasharray="3 3" strokeWidth={0.8} />
+              <line x1={(padLeft + (plotWidth - padRight)) / 2} y1={padTop} x2={(padLeft + (plotWidth - padRight)) / 2} y2={plotHeight - padBottom} stroke="var(--line)" strokeDasharray="3 3" strokeWidth={0.8} />
+
+              {/* Axis Labels */}
+              <text x={(padLeft + plotWidth - padRight) / 2} y={plotHeight - 8} fill="var(--muted)" fontSize={11} textAnchor="middle">
+                Average Latency per frame (ms) → [Lower is Faster]
+              </text>
+              <text
+                x={-(padTop + (plotHeight - padBottom) / 2)}
+                y={18}
+                fill="var(--muted)"
+                fontSize={11}
+                textAnchor="middle"
+                transform="rotate(-90)"
+              >
+                MOTA Accuracy (%) → [Higher is Better]
+              </text>
+
+              {/* Y-axis Ticks (Accuracy 0% to 100%) */}
+              <text x={padLeft - 6} y={padTop + 4} fill="var(--muted)" fontSize={9} textAnchor="end">100%</text>
+              <text x={padLeft - 6} y={(padTop + (plotHeight - padBottom)) / 2 + 3} fill="var(--muted)" fontSize={9} textAnchor="end">50%</text>
+              <text x={padLeft - 6} y={plotHeight - padBottom + 2} fill="var(--muted)" fontSize={9} textAnchor="end">0%</text>
+
+              {/* X-axis Ticks (Latency 0 to maxLatency) */}
+              <text x={padLeft} y={plotHeight - padBottom + 16} fill="var(--muted)" fontSize={9} textAnchor="middle">0ms</text>
+              <text x={(padLeft + (plotWidth - padRight)) / 2} y={plotHeight - padBottom + 16} fill="var(--muted)" fontSize={9} textAnchor="middle">
+                {(maxLatency / 2).toFixed(1)}ms
+              </text>
+              <text x={plotWidth - padRight} y={plotHeight - padBottom + 16} fill="var(--muted)" fontSize={9} textAnchor="middle">
+                {maxLatency.toFixed(1)}ms
+              </text>
+
+              {/* Tracker Bubbles */}
+              {items.map((it) => {
+                const normX = it.avg_time_ms / Math.max(maxLatency, 0.01);
+                const normY = it.mota / 100;
+                const cx = padLeft + normX * (plotWidth - padLeft - padRight);
+                const cy = (plotHeight - padBottom) - normY * (plotHeight - padTop - padBottom);
+                // Bubble radius scales with total errors (FP + FN + IDSW)
+                const r = 8 + (it.totalErrors / Math.max(maxTotalErrors, 1)) * 14;
+
+                return (
+                  <g key={it.id}>
+                    {/* Outer glow ring representing total error volume */}
+                    <circle
+                      cx={cx}
+                      cy={cy}
+                      r={r}
+                      fill={it.color}
+                      fillOpacity={0.25}
+                      stroke={it.color}
+                      strokeWidth={1.5}
+                    />
+                    {/* Center point */}
+                    <circle cx={cx} cy={cy} r={4} fill={it.color} />
+                    {/* Label */}
+                    <text
+                      x={cx}
+                      y={cy - r - 3}
+                      fill="var(--text)"
+                      fontSize={10.5}
+                      fontWeight={600}
+                      textAnchor="middle"
+                    >
+                      {it.name}
+                    </text>
+                    <text
+                      x={cx}
+                      y={cy + r + 11}
+                      fill="var(--muted)"
+                      fontSize={8.5}
+                      textAnchor="middle"
+                    >
+                      {it.mota.toFixed(0)}% · {it.avg_time_ms.toFixed(1)}ms
+                    </text>
+                  </g>
+                );
+              })}
+            </svg>
+          </div>
+
+          {/* Bottom Trade-off Legends */}
+          <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 18, marginTop: 14, paddingTop: 10, borderTop: "1px dashed var(--line)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+              <div style={{ width: 10, height: 10, background: "#61e0a9", borderRadius: 2 }} />
+              <span><b>Top-Left Quadrant</b>: Optimal Sweet Spot (High Accuracy & Low Latency)</span>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+              <div style={{ width: 14, height: 14, border: "2px solid #38bdf8", borderRadius: "50%", background: "rgba(56,189,248,0.2)" }} />
+              <span><b>Bubble Size</b>: Total Error Burden (FP + FN + ID Switches) — smaller bubble is better</span>
+            </div>
+          </div>
+        </div>
+      ) : metricTab === "errors" ? (
         <div>
           <div style={{ display: "grid", gridTemplateColumns: `repeat(${items.length}, 1fr)`, gap: 16, alignItems: "flex-end", height: 160, padding: "10px 10px 0", background: "var(--bg-3)", borderRadius: 8, border: "1px solid var(--line)" }}>
             {items.map((it) => (
@@ -312,7 +457,7 @@ function MultiTrackerComparisonChart({ results }: { results: TrackerResult[] }) 
             </div>
           </div>
         </div>
-      ) : (
+      ) : metricTab === "rates" ? (
         <div>
           <div style={{ display: "grid", gridTemplateColumns: `repeat(${items.length}, 1fr)`, gap: 16, alignItems: "flex-end", height: 160, padding: "10px 10px 0", background: "var(--bg-3)", borderRadius: 8, border: "1px solid var(--line)" }}>
             {items.map((it) => (
@@ -347,6 +492,56 @@ function MultiTrackerComparisonChart({ results }: { results: TrackerResult[] }) 
             <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
               <div style={{ width: 10, height: 10, background: "#38bdf8", borderRadius: 2 }} />
               <span><b>IDF1</b> — Identity F1 consistency score (higher is better)</span>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div>
+          <div style={{ display: "grid", gridTemplateColumns: `repeat(${items.length}, 1fr)`, gap: 16, alignItems: "flex-end", height: 160, padding: "10px 10px 0", background: "var(--bg-3)", borderRadius: 8, border: "1px solid var(--line)" }}>
+            {items.map((it) => {
+              const isSlowest = slowestLatency > 0 && it.avg_time_ms === slowestLatency && items.length > 1;
+              return (
+                <div key={it.id} style={{ display: "flex", flexDirection: "column", alignItems: "center", height: "100%", justifyContent: "flex-end" }}>
+                  <div style={{ display: "flex", gap: 6, alignItems: "flex-end", width: "100%", justifyContent: "center", height: 120 }}>
+                    {/* Latency bar */}
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: "42%" }} title={`${it.name} Latency: ${it.avg_time_ms} ms (${it.fps} FPS)`}>
+                      <span style={{ fontSize: 9.5, color: isSlowest ? "#ff7d8b" : "#fbbf24", marginBottom: 2, fontWeight: isSlowest ? 700 : 500 }}>
+                        {it.avg_time_ms.toFixed(1)} ms
+                      </span>
+                      <div
+                        style={{
+                          width: "100%",
+                          height: `${Math.max(4, (it.avg_time_ms / maxLatency) * 95)}px`,
+                          background: isSlowest ? "#ff7d8b" : "#fbbf24",
+                          borderRadius: "3px 3px 0 0",
+                          boxShadow: isSlowest ? "0 0 8px rgba(255, 125, 139, 0.4)" : undefined,
+                        }}
+                      />
+                      <span style={{ fontSize: 9, color: "var(--muted)", marginTop: 2 }}>{it.fps ? `${it.fps.toFixed(0)} FPS` : "ms"}</span>
+                    </div>
+                  </div>
+                  <div style={{ marginTop: 6, fontSize: 11, fontWeight: 600, color: it.color, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", width: "100%" }}>
+                    {it.name}
+                    {isSlowest && (
+                      <span style={{ display: "block", fontSize: 9, color: "#ff7d8b", fontWeight: 700, letterSpacing: "0.03em" }}>
+                        ⚠️ SLOWEST
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Bottom Legends */}
+          <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 18, marginTop: 14, paddingTop: 10, borderTop: "1px dashed var(--line)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+              <div style={{ width: 10, height: 10, background: "#fbbf24", borderRadius: 2 }} />
+              <span><b>Avg Latency (ms)</b> — Average computation time per frame (lower is faster)</span>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+              <div style={{ width: 10, height: 10, background: "#ff7d8b", borderRadius: 2 }} />
+              <span><b>⚠️ SLOWEST Highlight</b> — Tracker with the highest average latency overhead</span>
             </div>
           </div>
         </div>
