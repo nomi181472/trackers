@@ -17,14 +17,19 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from app.logging_config import request_id_ctx, setup_logging
 from app.router.api import router
 
+from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
+
 # Initialize global structured logger and exception hooks
 logger = setup_logging(logging.INFO)
 
 app = FastAPI(
-    title="Tracker Failure Simulator",
+    title="Tracker Failure Simulator API",
     version="0.1.0",
-    description="See *why* a tracking algorithm fails, with every "
-                "tracker and every hyperparameter exposed and explained.",
+    description="Interactive visual and programmatic lab to see *why* and *how* multi-object trackers fail. "
+                "Inspect hyperparameter knobs, track errors, and retrieve daily application logs.",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json",
 )
 
 app.add_middleware(
@@ -117,6 +122,24 @@ async def global_exception_handler(request: Request, exc: Exception):
 app.include_router(router)
 
 
+@app.get("/api/docs", include_in_schema=False)
+def api_swagger_ui():
+    """Swagger UI accessible at /api/docs."""
+    return get_swagger_ui_html(openapi_url="/openapi.json", title="Tracker Failure Simulator API — Swagger UI")
+
+
+@app.get("/api/redoc", include_in_schema=False)
+def api_redoc():
+    """ReDoc documentation accessible at /api/redoc."""
+    return get_redoc_html(openapi_url="/openapi.json", title="Tracker Failure Simulator API — ReDoc")
+
+
 @app.get("/")
 def root():
-    return {"message": "Tracker Failure Simulator. See /api/trackers and /api/docs."}
+    return {
+        "message": "Tracker Failure Simulator API",
+        "docs": "/docs",
+        "api_docs": "/api/docs",
+        "redoc": "/redoc",
+        "trackers": "/api/trackers",
+    }
