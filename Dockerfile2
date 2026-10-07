@@ -1,0 +1,58 @@
+# Multi-stage single-container build for Hugging Face Spaces (Port 7860)
+
+# Stage 1: Build the Next.js Frontend in standalone mode
+FROM node:20-alpine AS frontend-builder
+WORKDIR /app/frontend
+
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+
+COPY frontend/ ./
+# Empty or relative API URL so frontend calls /api on the same gateway origin
+ENV NEXT_PUBLIC_API_URL=""
+RUN npm run build
+
+# Stage 2: Unified Container Runtime (Python 3.12 + Node.js runtime)
+FROM python:3.12-slim
+
+# Prevent Python buffering & bytecode clutter
+ENV PYTHONUNBUFFERED=1 \
+    DEBIAN_FRONTEND=noninteractive \
+    PORT=7860
+
+WORKDIR /app
+
+# Install system dependencies (video codecs, OpenCV libs, and Node.js)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    ca-certificates \
+    ffmpeg \
+    libsm6 \
+    libxext6 \
+    build-essential \
+    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python backend dependencies
+COPY backend/requirements.txt /app/backend/
+RUN pip install --no-cache-dir -r /app/backend/requirements.txt
+
+# Copy Backend source code
+COPY backend /app/backend
+
+# Copy Standalone Next.js Frontend from builder
+COPY --from=frontend-builder /app/frontend/.next/standalone /app/frontend
+COPY --from=frontend-builder /app/frontend/.next/static /app/frontend/.next/static
+COPY --from=frontend-builder /app/frontend/public /app/frontend/public
+
+# Copy Gateway and Entrypoint scripts
+COPY gateway.js /app/gateway.js
+COPY entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
+# Hugging Face Spaces standard port
+EXPOSE 7860
+
+# Run all services through the unified entrypoint
+CMD ["/app/entrypoint.sh"]

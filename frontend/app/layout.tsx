@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Tracker Failure Simulator",
-  description: "See why object trackers fail — profile ByteTrack, BoT-SORT, OC-SORT and friends on scenes designed to break them.",
+  title: "Multi-Object Tracker Simulator | Standard & Production",
+  description: "Profile and stress-test computer vision trackers (ByteTrack, BoT-SORT, OC-SORT) with Standard failure scenarios and Production-grade SLAs.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

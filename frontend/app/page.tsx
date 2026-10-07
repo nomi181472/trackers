@@ -1,64 +1,133 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { Catalog, ParamValues, ScenarioMeta, SimulationResult, TrackerMeta } from "@/lib/types";
-import { getCatalog, scenarioPreview, startSimulation, pollUntilDone, uploadVideo, startRealJob, mediaUrl } from "@/lib/api";
+import type { Catalog, ParamValues, ScenarioMeta, SimulationResult } from "@/lib/types";
+import { getCatalog, scenarioPreview, startSimulation, pollUntilDone, mediaUrl } from "@/lib/api";
 import { SliderRow, BoolRow, ParamControl, SelectRow } from "@/components/controls";
 import { TrackerPicker } from "@/components/trackerPicker";
-import { ResultsView, CompareTable, RealResultsView } from "@/components/results";
+import { ResultsView, CompareTable } from "@/components/results";
+import { LogsView } from "@/components/logsView";
 import type { JobStatus } from "@/lib/types";
 
 /* ------------------------------------------------------------------ */
-/* Presets & defaults                                                  */
+/* Presets: Standard & Production                                     */
 /* ------------------------------------------------------------------ */
 
-const PRESETS: Record<string, { label: string; desc: string; scenario: ParamValues }> = {
+interface PresetDef {
+  label: string;
+  badge?: string;
+  desc: string;
+  scenario: ParamValues;
+  detection?: ParamValues;
+}
+
+const STANDARD_PRESETS: Record<string, PresetDef> = {
   clean: {
-    label: "☀️ Clean scene",
-    desc: "Nothing to hide. Everyone separated.",
-    scenario: { seed: 2, num_objects: 3, crossing: false, occlusion: false, camera_shake: false, blur: false, similar_colors: false },
+    label: "☀️ Clean Scene",
+    badge: "Baseline",
+    desc: "Zero occlusions, separated paths. Verify ideal baseline tracking.",
+    scenario: { seed: 2, num_objects: 3, object_type: "person", crossing: false, occlusion: false, camera_shake: false, blur: false, similar_colors: false },
   },
   occlusion: {
-    label: "🧱 Occlusion wall",
-    desc: "Objects walk behind a wall.",
-    scenario: { seed: 4, num_objects: 3, crossing: false, occlusion: true, occluder_width: 90, camera_shake: false, blur: false, similar_colors: false },
+    label: "🧱 Occlusion Wall",
+    badge: "Stress",
+    desc: "Objects walk behind a physical wall. Tests re-identification vs track loss.",
+    scenario: { seed: 4, num_objects: 3, object_type: "person", crossing: false, occlusion: true, occluder_width: 85, camera_shake: false, blur: false, similar_colors: false },
   },
   crossing: {
-    label: "✖️ Crossing chaos",
-    desc: "Two objects swap sides at the exact same moment.",
-    scenario: { seed: 4, num_objects: 3, crossing: true, occlusion: false, camera_shake: false, blur: false, similar_colors: false },
+    label: "✖️ Trajectory Crossing",
+    badge: "Identity",
+    desc: "Objects cross and swap sides at the exact same frame. Tests ID switch resilience.",
+    scenario: { seed: 4, num_objects: 3, object_type: "person", crossing: true, occlusion: false, camera_shake: false, blur: false, similar_colors: false },
   },
   lookalike: {
-    label: "🧑‍🤝‍🧑 Look-alikes",
-    desc: "Everyone identical — no appearance cues.",
-    scenario: { seed: 5, num_objects: 4, crossing: true, occlusion: true, similar_colors: true, camera_shake: false, blur: false },
+    label: "🧑‍🤝‍🧑 Look-alikes (Disguise)",
+    badge: "Appearance",
+    desc: "All objects share identical colors. Forces reliance on motion dynamics.",
+    scenario: { seed: 5, num_objects: 4, object_type: "person", crossing: true, occlusion: true, similar_colors: true, camera_shake: false, blur: false },
   },
   shake: {
-    label: "📳 Camera shake",
-    desc: "The whole frame jumps around.",
-    scenario: { seed: 3, num_objects: 3, crossing: true, occlusion: false, camera_shake: true, shake_px: 12, blur: false, similar_colors: false },
+    label: "📳 Severe Camera Shake",
+    badge: "Camera Motion",
+    desc: "Frame violently translates. Tests Global Motion Compensation (GMC).",
+    scenario: { seed: 3, num_objects: 3, object_type: "person", crossing: true, occlusion: false, camera_shake: true, shake_px: 14, blur: false, similar_colors: false },
   },
   blur: {
-    label: "🌫️ Motion blur",
-    desc: "Detector confidence drops to nothing.",
-    scenario: { seed: 8, num_objects: 4, crossing: true, occlusion: true, blur: true, blur_sigma: 4, camera_shake: false, similar_colors: false },
+    label: "🌫️ High Motion Blur",
+    badge: "Detector Stress",
+    desc: "Simulated rapid movement blur degrades bounding box detections.",
+    scenario: { seed: 8, num_objects: 4, object_type: "person", crossing: true, occlusion: true, blur: true, blur_sigma: 4.5, camera_shake: false, similar_colors: false },
+  },
+};
+
+const PRODUCTION_PRESETS: Record<string, PresetDef> = {
+  cctv_surveillance: {
+    label: "📹 Security CCTV Corridor",
+    badge: "Surveillance",
+    desc: "15 FPS surveillance feed with pedestrian crossings, moderate occlusions, and real-world detector confidence.",
+    scenario: { seed: 12, fps: 15, duration_seconds: 6, num_objects: 4, object_type: "person", crossing: true, occlusion: true, occluder_width: 65, camera_shake: false, blur: false, similar_colors: false },
+    detection: { conf: 0.35, iou: 0.65, det_dropout: 0.03, det_noise_pos: 2.0 },
+  },
+  traffic_intersection: {
+    label: "🚦 Urban Vehicle Traffic",
+    badge: "Smart City",
+    desc: "Fast moving vehicles crossing intersections with occasional truck occlusions.",
+    scenario: { seed: 21, fps: 24, duration_seconds: 7, num_objects: 5, object_type: "car", crossing: true, occlusion: true, occluder_width: 90, camera_shake: false, blur: false, similar_colors: false },
+    detection: { conf: 0.45, iou: 0.7, det_dropout: 0.02, det_noise_pos: 1.5 },
+  },
+  dense_retail: {
+    label: "🛍️ Dense Retail / Store Crowd",
+    badge: "High Density",
+    desc: "High density of shoppers (6 objects) in tight proximity with look-alike clothing and frequent overlaps.",
+    scenario: { seed: 44, fps: 20, duration_seconds: 8, num_objects: 6, object_type: "person", crossing: true, occlusion: true, occluder_width: 75, camera_shake: false, blur: false, similar_colors: true },
+    detection: { conf: 0.30, iou: 0.6, det_dropout: 0.05, det_noise_pos: 3.0 },
+  },
+  edge_robotics: {
+    label: "🤖 Mobile Robot / Drone Feed",
+    badge: "Edge AI",
+    desc: "Active camera vibration + motion blur. Simulates real-time edge embedded processors with strict latency requirements.",
+    scenario: { seed: 33, fps: 30, duration_seconds: 5, num_objects: 3, object_type: "ball", crossing: true, occlusion: false, camera_shake: true, shake_px: 12, blur: true, blur_sigma: 3.5, similar_colors: false },
+    detection: { conf: 0.40, iou: 0.65, det_dropout: 0.04, det_noise_pos: 2.5 },
   },
 };
 
 const SCENARIO_DEFAULTS: ParamValues = {
-  seed: 4, fps: 15, duration_seconds: 6, num_objects: 3, object_type: "person", crossing: true,
-  occlusion: true, occluder_width: 70, camera_shake: false, shake_px: 10,
-  blur: false, blur_sigma: 3, similar_colors: false,
+  seed: 4,
+  fps: 15,
+  duration_seconds: 6,
+  num_objects: 3,
+  object_type: "person",
+  crossing: true,
+  occlusion: true,
+  occluder_width: 70,
+  camera_shake: false,
+  shake_px: 10,
+  blur: false,
+  blur_sigma: 3,
+  similar_colors: false,
 };
 
 /* ------------------------------------------------------------------ */
-
-import { LogsView } from "@/components/logsView";
+/* Main Application Component                                          */
+/* ------------------------------------------------------------------ */
 
 export default function Home() {
-  const [tab, setTab] = useState<"sim" | "real" | "logs">("sim");
+  const [mode, setMode] = useState<"standard" | "production" | "logs">("standard");
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [catalogErr, setCatalogErr] = useState<string | null>(null);
+  const [theme, setTheme] = useState<"dark" | "light" | "midnight">("dark");
+
+  useEffect(() => {
+    const savedTheme = (localStorage.getItem("tracker_theme") as "dark" | "light" | "midnight") || "dark";
+    setTheme(savedTheme);
+    document.documentElement.setAttribute("data-theme", savedTheme);
+  }, []);
+
+  const changeTheme = (newTheme: "dark" | "light" | "midnight") => {
+    setTheme(newTheme);
+    localStorage.setItem("tracker_theme", newTheme);
+    document.documentElement.setAttribute("data-theme", newTheme);
+  };
 
   useEffect(() => {
     getCatalog()
@@ -68,39 +137,112 @@ export default function Home() {
 
   return (
     <div className="wrap">
-      <div className="tabs">
-        <div className={`tab ${tab === "sim" ? "active" : ""}`} onClick={() => setTab("sim")}>
-          🧪 Simulator
+      {/* Top Header Bar */}
+      <div className="topbar" style={{ borderRadius: "12px", marginBottom: "16px", flexWrap: "wrap", gap: "12px" }}>
+        <div className="topbar-left">
+          <div className="dot" />
+          <div>
+            <h1>
+              <span>🎯 Tracker Lab</span>
+              <span style={{ fontSize: "12px", fontWeight: 400, color: "var(--muted)", borderLeft: "1px solid var(--line)", paddingLeft: "8px" }}>
+                Multi-Object Tracking Evaluation Platform
+              </span>
+            </h1>
+          </div>
         </div>
-        <div className={`tab ${tab === "real" ? "active" : ""}`} onClick={() => setTab("real")}>
-          🎥 Real video
-        </div>
-        <div className={`tab ${tab === "logs" ? "active" : ""}`} onClick={() => setTab("logs")}>
-          📋 Server Logs
+
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+          {/* Mode Switcher */}
+          <div className="mode-switcher" style={{ margin: 0 }}>
+            <button
+              type="button"
+              className={`mode-btn ${mode === "standard" ? "active" : ""}`}
+              onClick={() => setMode("standard")}
+            >
+              <span>🧪 Standard</span>
+              <span className="mode-pill mode-pill-std">Diagnostics</span>
+            </button>
+            <button
+              type="button"
+              className={`mode-btn prod ${mode === "production" ? "active" : ""}`}
+              onClick={() => setMode("production")}
+            >
+              <span>🚀 Production</span>
+              <span className="mode-pill mode-pill-prod">SLAs</span>
+            </button>
+            <button
+              type="button"
+              className={`mode-btn ${mode === "logs" ? "active" : ""}`}
+              onClick={() => setMode("logs")}
+            >
+              <span>📋 Logs</span>
+            </button>
+          </div>
+
+          {/* Theme / Appearance Switcher */}
+          <div className="theme-selector">
+            <button
+              type="button"
+              className={`theme-btn ${theme === "dark" ? "active" : ""}`}
+              onClick={() => changeTheme("dark")}
+              title="Dark Mode"
+            >
+              <span>🌙 Dark</span>
+            </button>
+            <button
+              type="button"
+              className={`theme-btn ${theme === "light" ? "active" : ""}`}
+              onClick={() => changeTheme("light")}
+              title="Light Mode"
+            >
+              <span>☀️ Light</span>
+            </button>
+            <button
+              type="button"
+              className={`theme-btn ${theme === "midnight" ? "active" : ""}`}
+              onClick={() => changeTheme("midnight")}
+              title="Midnight (OLED) Mode"
+            >
+              <span>🌌 Midnight</span>
+            </button>
+          </div>
         </div>
       </div>
-      {catalogErr ? <div className="err">Can&apos;t reach the backend: {catalogErr}. Start it with <span className="mono">uvicorn app.main:app --port 8000</span> in backend/.</div> : null}
-      {tab === "logs" ? (
+
+      {catalogErr ? (
+        <div className="err" style={{ marginBottom: "16px" }}>
+          Can&apos;t reach the backend: {catalogErr}. Start it with <span className="mono">uvicorn app.main:app --port 8000</span> in backend/.
+        </div>
+      ) : null}
+
+      {mode === "logs" ? (
         <LogsView />
       ) : catalog ? (
-        tab === "sim" ? (
-          <SimulatorTab catalog={catalog} />
-        ) : (
-          <RealTab catalog={catalog} />
-        )
+        <SimulatorWorkspace catalog={catalog} mode={mode} />
       ) : !catalogErr ? (
-        <div className="panel">Loading tracker catalog…</div>
+        <div className="panel" style={{ padding: "40px", textAlign: "center" }}>
+          <span className="spin" style={{ width: 22, height: 22 }} />
+          <span>Loading tracker catalog & engines…</span>
+        </div>
       ) : null}
     </div>
   );
 }
 
 /* ------------------------------------------------------------------ */
-/* Simulator tab                                                       */
+/* Unified Simulator Workspace (Standard & Production Modes)           */
 /* ------------------------------------------------------------------ */
 
-function SimulatorTab({ catalog }: { catalog: Catalog }) {
-  const [scenario, setScenario] = useState<ParamValues>({ ...SCENARIO_DEFAULTS });
+function SimulatorWorkspace({ catalog, mode }: { catalog: Catalog; mode: "standard" | "production" }) {
+  const isProduction = mode === "production";
+  const presets = isProduction ? PRODUCTION_PRESETS : STANDARD_PRESETS;
+  const initialPresetKey = isProduction ? "cctv_surveillance" : "crossing";
+
+  const [preset, setPreset] = useState<string>(initialPresetKey);
+  const [scenario, setScenario] = useState<ParamValues>({
+    ...SCENARIO_DEFAULTS,
+    ...(presets[initialPresetKey]?.scenario || {}),
+  });
   const [detection, setDetection] = useState<ParamValues>({});
   const [selected, setSelected] = useState<Record<string, ParamValues | null>>({});
   const [preview, setPreview] = useState<ScenarioMeta | null>(null);
@@ -108,33 +250,64 @@ function SimulatorTab({ catalog }: { catalog: Catalog }) {
   const [result, setResult] = useState<SimulationResult | null>(null);
   const [history, setHistory] = useState<SimulationResult[]>([]);
   const [err, setErr] = useState<string | null>(null);
-  const [preset, setPreset] = useState<string>("crossing");
-  const [showDetNoise, setShowDetNoise] = useState(false);
+  const [showAdvancedDet, setShowAdvancedDet] = useState(false);
 
+  // Sync preset defaults when mode switches
+  useEffect(() => {
+    const defaultKey = isProduction ? "cctv_surveillance" : "crossing";
+    const p = presets[defaultKey];
+    setPreset(defaultKey);
+    if (p) {
+      setScenario({ ...SCENARIO_DEFAULTS, ...p.scenario });
+      if (p.detection) {
+        setDetection((d) => ({ ...d, ...p.detection }));
+      }
+    }
+  }, [mode, isProduction]);
+
+  // Load tracker catalog defaults
   useEffect(() => {
     const det: ParamValues = {};
-    [...catalog.detector_params, ...catalog.scenario_detection_params].forEach((p) => (det[p.key] = p.default));
+    [...catalog.detector_params, ...catalog.scenario_detection_params].forEach((p) => {
+      det[p.key] = p.default;
+    });
     setDetection(det);
+
     const defaults: Record<string, ParamValues | null> = {};
-    catalog.trackers.filter((t) => t.available).forEach((t) => (defaults[t.id] = { ...(catalog.defaults[t.id] || {}) }));
+    // By default, select standard top performers: ByteTrack, BoT-SORT, OC-SORT
+    catalog.trackers
+      .filter((t) => t.available)
+      .forEach((t) => {
+        if (["bytetrack", "botsort", "ocsort"].includes(t.id)) {
+          defaults[t.id] = { ...(catalog.defaults[t.id] || {}) };
+        }
+      });
     setSelected(defaults);
   }, [catalog]);
 
-  const applyPreset = (name: string) => {
-    setPreset(name);
-    setScenario({ ...SCENARIO_DEFAULTS, ...PRESETS[name].scenario });
+  const applyPreset = (key: string) => {
+    setPreset(key);
+    const p = presets[key];
+    if (p) {
+      setScenario({ ...SCENARIO_DEFAULTS, ...p.scenario });
+      if (p.detection) {
+        setDetection((d) => ({ ...d, ...p.detection }));
+      }
+    }
   };
 
   const run = async () => {
     setErr(null);
     setResult(null);
     const chosen = catalog.trackers.filter((t) => selected[t.id]);
-    if (!chosen.length) return setErr("Pick at least one tracker.");
+    if (!chosen.length) return setErr("Select at least one tracker to simulate.");
     const unavailable = chosen.filter((t) => !t.available);
-    if (unavailable.length)
+    if (unavailable.length) {
       return setErr(
-        `"${unavailable.map((t) => t.name).join(", ")}" not available in this OpenCV/Python build — enable a different tracker.`
+        `"${unavailable.map((t) => t.name).join(", ")}" is not available in this build — choose an active tracker.`
       );
+    }
+
     try {
       const { job_id } = await startSimulation({
         scenario,
@@ -142,10 +315,10 @@ function SimulatorTab({ catalog }: { catalog: Catalog }) {
         trackers: chosen.map((t) => ({ tracker_id: t.id, params: selected[t.id] || {} })),
       });
       const job = await pollUntilDone(job_id, setRunning);
-      if (job.status === "error") throw new Error(job.error || "job failed");
+      if (job.status === "error") throw new Error(job.error || "Simulation job encountered an error.");
       const res = job.result as SimulationResult;
       setResult(res);
-      setHistory((h) => [res, ...h].slice(0, 3));
+      setHistory((h) => [res, ...h].slice(0, 4));
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     }
@@ -163,110 +336,313 @@ function SimulatorTab({ catalog }: { catalog: Catalog }) {
 
   return (
     <div className="grid">
+      {/* LEFT COLUMN: Controls & Configuration */}
       <div>
+        {/* Production Mode Informational Banner */}
+        {isProduction ? (
+          <div className="prod-banner">
+            <h4>
+              <span>🚀 Production Benchmarking Mode</span>
+            </h4>
+            <p>
+              Profile trackers against realistic deployment environments and verify Service Level Agreements (SLAs).
+              Monitors FPS throughput, latency budgets, and false-positive resilience.
+            </p>
+            <div className="sla-grid">
+              <div className="sla-card">
+                <div className="sla-label">Target Throughput</div>
+                <div className="sla-target">≥ {Number(scenario.fps || 15)} FPS</div>
+              </div>
+              <div className="sla-card">
+                <div className="sla-label">Latency Ceiling</div>
+                <div className="sla-target">≤ 35 ms</div>
+              </div>
+              <div className="sla-card">
+                <div className="sla-label">Tracking Accuracy</div>
+                <div className="sla-target">MOTA ≥ 0.70</div>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {/* 1. Presets Section */}
         <div className="panel">
-          <h3>Scenario — pick what breaks trackers</h3>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+            <h3 style={{ margin: 0 }}>
+              {isProduction ? "1. Production Environments" : "1. Failure Presets"}
+            </h3>
+            <span style={{ fontSize: "11px", color: "var(--muted)" }}>
+              {Object.keys(presets).length} profiles
+            </span>
+          </div>
+
           <div className="presets">
-            {Object.entries(PRESETS).map(([k, v]) => (
-              <div key={k} className={`preset ${preset === k ? "active" : ""}`} onClick={() => applyPreset(k)}>
-                <b>{v.label}</b>
-                {v.desc}
+            {Object.entries(presets).map(([k, v]) => (
+              <div
+                key={k}
+                className={`preset ${preset === k ? "active" : ""}`}
+                onClick={() => applyPreset(k)}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "3px" }}>
+                  <b>{v.label}</b>
+                  {v.badge ? (
+                    <span
+                      style={{
+                        fontSize: "9.5px",
+                        padding: "1px 5px",
+                        borderRadius: "4px",
+                        background: "rgba(255,255,255,0.08)",
+                        color: "var(--muted)",
+                        fontWeight: 600,
+                      }}
+                    >
+                      {v.badge}
+                    </span>
+                  ) : null}
+                </div>
+                <div>{v.desc}</div>
               </div>
             ))}
           </div>
 
-          <SelectRow
-            label="Object type"
-            value={String(scenario.object_type || "person")}
-            options={[
-              { value: "person", label: "🏃 Person (Skeleton)" },
-              { value: "car", label: "🚗 Car" },
-              { value: "ball", label: "⚽ Ball" },
-            ]}
-            hint="Choose what to simulate: animated walking skeleton, car, or ball."
-            onChange={(v) => setScenario((s) => ({ ...s, object_type: v }))}
-          />
+          {/* Scenario Knobs */}
+          <div style={{ borderTop: "1px solid var(--line)", paddingTop: "12px", marginTop: "4px" }}>
+            <SelectRow
+              label="Simulated Object"
+              value={String(scenario.object_type || "person")}
+              options={[
+                { value: "person", label: "🏃 Person (Pedestrian / Skeleton)" },
+                { value: "car", label: "🚗 Vehicle (Automotive)" },
+                { value: "ball", label: "⚽ Circle (Geometric Baseline)" },
+              ]}
+              hint="Choose target entity geometry and motion physics."
+              onChange={(v) => setScenario((s) => ({ ...s, object_type: v }))}
+            />
 
-          <SliderRow label="Seed" min={0} max={99} step={1} value={Number(scenario.seed)} hint="Changes the random layout of the scene." onChange={(v) => setScenario((s) => ({ ...s, seed: v }))} />
-          <SliderRow label="Objects" min={1} max={6} step={1} value={Number(scenario.num_objects)} hint="How many objects to track." onChange={(v) => setScenario((s) => ({ ...s, num_objects: v }))} />
-          <SliderRow label="Duration" min={2} max={15} step={1} value={Number(scenario.duration_seconds)} unit="s" hint="Keep it short while experimenting." onChange={(v) => setScenario((s) => ({ ...s, duration_seconds: v }))} />
-          <SliderRow label="Frame rate" min={5} max={30} step={1} value={Number(scenario.fps)} unit="fps" onChange={(v) => setScenario((s) => ({ ...s, fps: v }))} />
+            <SliderRow
+              label="Scene Seed"
+              min={0}
+              max={99}
+              step={1}
+              value={Number(scenario.seed)}
+              hint="Changes pseudo-random initial placement and trajectories."
+              onChange={(v) => setScenario((s) => ({ ...s, seed: v }))}
+            />
+            <SliderRow
+              label="Object Count"
+              min={1}
+              max={7}
+              step={1}
+              value={Number(scenario.num_objects)}
+              hint="Total concurrent targets to track in the scene."
+              onChange={(v) => setScenario((s) => ({ ...s, num_objects: v }))}
+            />
+            <SliderRow
+              label="Duration"
+              min={2}
+              max={15}
+              step={1}
+              value={Number(scenario.duration_seconds)}
+              unit="s"
+              hint="Length of simulated scenario."
+              onChange={(v) => setScenario((s) => ({ ...s, duration_seconds: v }))}
+            />
+            <SliderRow
+              label="Frame Rate"
+              min={10}
+              max={30}
+              step={1}
+              value={Number(scenario.fps)}
+              unit="fps"
+              hint="Video sampling rate. Lower FPS stresses motion extrapolation."
+              onChange={(v) => setScenario((s) => ({ ...s, fps: v }))}
+            />
 
-          <BoolRow label="Crossing objects" text="Two objects swap sides, overlapping at the midpoint." value={Boolean(scenario.crossing)} onChange={(v) => setScenario((s) => ({ ...s, crossing: v }))} />
-          <BoolRow label="Occlusion wall" text="Objects disappear behind a wall." value={Boolean(scenario.occlusion)} onChange={(v) => setScenario((s) => ({ ...s, occlusion: v }))} />
-          {scenario.occlusion ? (
-            <SliderRow label="Wall thickness" min={30} max={140} step={2} value={Number(scenario.occluder_width)} unit="px" hint="Thicker = longer hidden = harder to re-find." onChange={(v) => setScenario((s) => ({ ...s, occluder_width: v }))} />
-          ) : null}
-          <BoolRow label="Camera shake" text="The whole frame translates randomly → tests motion-compensation." value={Boolean(scenario.camera_shake)} onChange={(v) => setScenario((s) => ({ ...s, camera_shake: v }))} />
-          {scenario.camera_shake ? (
-            <SliderRow label="Shake strength" min={2} max={30} step={1} value={Number(scenario.shake_px)} unit="px" onChange={(v) => setScenario((s) => ({ ...s, shake_px: v }))} />
-          ) : null}
-          <BoolRow label="Motion blur" text="Whole frame blurred → detector confidence melts." value={Boolean(scenario.blur)} onChange={(v) => setScenario((s) => ({ ...s, blur: v }))} />
-          {scenario.blur ? (
-            <SliderRow label="Blur strength" min={1} max={7} step={0.5} value={Number(scenario.blur_sigma)} onChange={(v) => setScenario((s) => ({ ...s, blur_sigma: v }))} />
-          ) : null}
-          <BoolRow label="Look-alikes" text="All objects the same colour → appearance gives no clues." value={Boolean(scenario.similar_colors)} onChange={(v) => setScenario((s) => ({ ...s, similar_colors: v }))} />
+            <BoolRow
+              label="Crossing Objects"
+              text="Targets cross paths at the center, creating ambiguous bounding box overlaps."
+              value={Boolean(scenario.crossing)}
+              onChange={(v) => setScenario((s) => ({ ...s, crossing: v }))}
+            />
+            <BoolRow
+              label="Occlusion Barrier"
+              text="Targets pass behind a physical obstacle where detections vanish."
+              value={Boolean(scenario.occlusion)}
+              onChange={(v) => setScenario((s) => ({ ...s, occlusion: v }))}
+            />
+            {scenario.occlusion ? (
+              <SliderRow
+                label="Barrier Width"
+                min={30}
+                max={140}
+                step={2}
+                value={Number(scenario.occluder_width)}
+                unit="px"
+                hint="Wider barriers keep objects hidden longer, challenging track memory."
+                onChange={(v) => setScenario((s) => ({ ...s, occluder_width: v }))}
+              />
+            ) : null}
 
-          <button className="btn ghost" style={{ marginTop: 4 }} onClick={previewIt} disabled={running !== null}>
-            Preview scene
-          </button>
-          {preview ? (
-            <div style={{ marginTop: 10 }}>
-              <video src={mediaUrl(preview.preview_url)} controls muted loop style={{ width: "100%", borderRadius: 8, border: "1px solid var(--line)" }} />
-              <small>
-                {preview.frames} frames · {preview.width}×{preview.height} — boxes = ground truth that each tracker is judged against.
-              </small>
+            <BoolRow
+              label="Camera Shake"
+              text="Simulates handheld camera jitter or drone vibration (GMC challenge)."
+              value={Boolean(scenario.camera_shake)}
+              onChange={(v) => setScenario((s) => ({ ...s, camera_shake: v }))}
+            />
+            {scenario.camera_shake ? (
+              <SliderRow
+                label="Shake Amplitude"
+                min={2}
+                max={30}
+                step={1}
+                value={Number(scenario.shake_px)}
+                unit="px"
+                onChange={(v) => setScenario((s) => ({ ...s, shake_px: v }))}
+              />
+            ) : null}
+
+            <BoolRow
+              label="Motion Blur"
+              text="Simulates fast camera panning or exposure lag, degrading detector confidence."
+              value={Boolean(scenario.blur)}
+              onChange={(v) => setScenario((s) => ({ ...s, blur: v }))}
+            />
+            {scenario.blur ? (
+              <SliderRow
+                label="Blur Kernel Sigma"
+                min={1}
+                max={7}
+                step={0.5}
+                value={Number(scenario.blur_sigma)}
+                onChange={(v) => setScenario((s) => ({ ...s, blur_sigma: v }))}
+              />
+            ) : null}
+
+            <BoolRow
+              label="Identical Appearance"
+              text="All objects share the exact same visual cues (tests motion-only tracking)."
+              value={Boolean(scenario.similar_colors)}
+              onChange={(v) => setScenario((s) => ({ ...s, similar_colors: v }))}
+            />
+
+            <div style={{ display: "flex", gap: "8px", marginTop: "10px" }}>
+              <button
+                type="button"
+                className="btn ghost"
+                style={{ width: "100%", fontSize: "12px", padding: "8px" }}
+                onClick={previewIt}
+                disabled={running !== null}
+              >
+                👁️ Preview Ground Truth Scene
+              </button>
             </div>
-          ) : null}
+
+            {preview ? (
+              <div style={{ marginTop: 12 }}>
+                <video
+                  src={mediaUrl(preview.preview_url)}
+                  controls
+                  muted
+                  loop
+                  style={{ width: "100%", borderRadius: 8, border: "1px solid var(--line)" }}
+                />
+                <small style={{ display: "block", marginTop: "4px" }}>
+                  {preview.frames} frames · {preview.width}×{preview.height} @ {preview.fps} FPS · Ground-truth verified
+                </small>
+              </div>
+            ) : null}
+          </div>
         </div>
 
+        {/* 2. Detector Settings */}
         <div className="panel" style={{ marginTop: 16 }}>
-          <h3>Detector — the eyes your trackers see through</h3>
+          <h3>2. Upstream Detector Properties</h3>
+          <small style={{ display: "block", marginBottom: 10, color: "var(--muted)" }}>
+            The detector generates raw bounding box inputs for the tracker algorithms.
+          </small>
+
           {catalog.detector_params.map((p) => (
-            <ParamControl key={p.key} p={p} value={detection[p.key] ?? p.default} onChange={(v) => setDetection((d) => ({ ...d, [p.key]: v }))} />
+            <ParamControl
+              key={p.key}
+              p={p}
+              value={detection[p.key] ?? p.default}
+              onChange={(v) => setDetection((d) => ({ ...d, [p.key]: v }))}
+            />
           ))}
-          <div className="collapse-head" onClick={() => setShowDetNoise((s) => !s)}>
-            <span style={{ transform: `rotate(${showDetNoise ? 90 : 0}deg)`, display: "inline-block" }}>▸</span>
-            Simulated detection imperfections {showDetNoise ? "▲" : "▼"}
+
+          <div className="collapse-head" onClick={() => setShowAdvancedDet((s) => !s)}>
+            <span style={{ transform: `rotate(${showAdvancedDet ? 90 : 0}deg)`, display: "inline-block" }}>▸</span>
+            {showAdvancedDet ? "Hide" : "Show"} Synthetic Detector Imperfections ({catalog.scenario_detection_params.length} knobs)
           </div>
-          {showDetNoise &&
+
+          {showAdvancedDet &&
             catalog.scenario_detection_params.map((p) => (
-              <ParamControl key={p.key} p={p} value={detection[p.key] ?? p.default} onChange={(v) => setDetection((d) => ({ ...d, [p.key]: v }))} />
+              <ParamControl
+                key={p.key}
+                p={p}
+                value={detection[p.key] ?? p.default}
+                onChange={(v) => setDetection((d) => ({ ...d, [p.key]: v }))}
+              />
             ))}
         </div>
 
+        {/* 3. Tracker Selection */}
         <div className="panel" style={{ marginTop: 16 }}>
-          <h3>Trackers — pick who to torture</h3>
-          <div className="legend">
-            <span className="badge badge-ul">ultralytics</span>
-            <span className="badge badge-cu">bespoke</span>
-            <span className="badge badge-cv">opencv</span>
-          </div>
+          <h3>3. Trackers Under Test</h3>
+          <small style={{ display: "block", marginBottom: 10, color: "var(--muted)" }}>
+            Select one or multiple algorithms to run head-to-head under identical conditions.
+          </small>
           <TrackerPicker catalog={catalog} selected={selected} setSelected={setSelected} />
         </div>
 
-        {err ? <div className="err" style={{ marginTop: 12 }}>{err}</div> : null}
+        {err ? <div className="err" style={{ marginTop: 14 }}>{err}</div> : null}
 
-        <button className="btn" style={{ width: "100%", marginTop: 14 }} onClick={run} disabled={running !== null}>
-          {running ? "Running…" : "▶ Run simulation"}
+        {/* Execution Button */}
+        <button
+          className="btn"
+          style={{ width: "100%", marginTop: 16, padding: "13px 20px", fontSize: "14px" }}
+          onClick={run}
+          disabled={running !== null}
+        >
+          {running ? "Simulating Trackers…" : isProduction ? "▶ Run Production Benchmark" : "▶ Run Diagnostic Simulation"}
         </button>
+
         {running ? (
-          <div style={{ marginTop: 10 }}>
-            <div className="progress"><div style={{ width: `${Math.round((running.progress || 0) * 100)}%` }} /></div>
-            <small style={{ display: "block", marginTop: 6 }}>
+          <div style={{ marginTop: 12 }}>
+            <div className="progress">
+              <div style={{ width: `${Math.round((running.progress || 0) * 100)}%` }} />
+            </div>
+            <small style={{ display: "block", marginTop: 6, color: "var(--muted)" }}>
               <span className="spin" /> <span className="mono">{running.message}</span> ({Math.round((running.progress || 0) * 100)}%)
             </small>
           </div>
         ) : null}
       </div>
 
+      {/* RIGHT COLUMN: Results & Benchmarks */}
       <div>
-        {result ? <ResultsView result={result} /> : null}
+        {result ? (
+          <div>
+            {isProduction ? (
+              <ProductionSLAOverview result={result} targetFps={Number(scenario.fps || 15)} />
+            ) : null}
+            <ResultsView result={result} />
+          </div>
+        ) : null}
+
         {history.length > 1 ? <CompareTable history={history} /> : null}
+
         {!result && !history.length ? (
-          <div className="panel" style={{ textAlign: "center", padding: "60px 20px", color: "var(--muted)" }}>
-            <div style={{ fontSize: 30 }}>🎬</div>
-            Pick a scenario, choose trackers, hit <b>Run simulation</b>. We&apos;ll show exactly where each tracker loses its mind — and why.
+          <div className="panel" style={{ textAlign: "center", padding: "80px 24px", color: "var(--muted)" }}>
+            <div style={{ fontSize: 44, marginBottom: 12 }}>⚡</div>
+            <h3 style={{ color: "var(--text)", fontSize: "16px", marginBottom: "6px" }}>
+              {isProduction ? "Production Tracker Benchmark Ready" : "Tracker Failure Simulator Ready"}
+            </h3>
+            <p style={{ maxWidth: "480px", margin: "0 auto", fontSize: "13px", lineHeight: "1.6" }}>
+              {isProduction
+                ? "Select a production environment (CCTV, Traffic, Retail, Edge Robotics), configure targets, and hit Run Production Benchmark to profile throughput, SLA compliance, and failure telemetry."
+                : "Choose a failure stress scenario (occlusion, crossings, motion blur), pick algorithms to benchmark, and hit Run Simulation to diagnose exactly where trackers fail."}
+            </p>
           </div>
         ) : null}
       </div>
@@ -275,114 +651,49 @@ function SimulatorTab({ catalog }: { catalog: Catalog }) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Real video tab                                                      */
+/* Production SLA Overview Component                                  */
 /* ------------------------------------------------------------------ */
 
-function RealTab({ catalog }: { catalog: Catalog }) {
-  const [file, setFile] = useState<File | null>(null);
-  const [uploadId, setUploadId] = useState<string | null>(null);
-  const [trackerId, setTrackerId] = useState<string>("bytetrack");
-  const [params, setParams] = useState<ParamValues>({});
-  const [detParams, setDetParams] = useState<ParamValues>({});
-  const [running, setRunning] = useState<JobStatus | null>(null);
-  const [result, setResult] = useState<SimulationResult | null>(null);
-  const [err, setErr] = useState<string | null>(null);
-
-  useEffect(() => {
-    const det: ParamValues = {};
-    catalog.detector_params.forEach((p) => (det[p.key] = p.default));
-    setDetParams(det);
-  }, [catalog]);
-
-  const onFile = async (f: File | null) => {
-    setFile(f);
-    setUploadId(null);
-    if (f) {
-      try {
-        const { upload_id } = await uploadVideo(f);
-        setUploadId(upload_id);
-      } catch (e) {
-        setErr(e instanceof Error ? e.message : String(e));
-      }
-    }
-  };
-
-  const tracker = catalog.trackers.find((t) => t.id === trackerId);
-
-  const run = async () => {
-    setErr(null);
-    setResult(null);
-    if (!uploadId) return setErr("Upload a video first.");
-    if (!tracker || !tracker.available) return setErr("That tracker is not available in this build.");
-    try {
-      const { job_id } = await startRealJob({ upload_id: uploadId, tracker_id: trackerId, params, det_params: detParams });
-      const job = await pollUntilDone(job_id, setRunning);
-      if (job.status === "error") throw new Error(job.error || "job failed");
-      setResult(job.result as SimulationResult);
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
-    }
-    setRunning(null);
-  };
+function ProductionSLAOverview({ result, targetFps }: { result: SimulationResult; targetFps: number }) {
+  const maxLatencyThreshold = 35; // ms
+  const minMotaThreshold = 0.65;
 
   return (
-    <div className="grid">
-      <div>
-        <div className="panel">
-          <h3>Your video</h3>
-          <input type="file" accept="video/*" onChange={(e) => onFile(e.target.files?.[0] ?? null)} />
-          {file ? (
-            <small style={{ display: "block", marginTop: 6 }}>
-              {file.name} · {(file.size / 1e6).toFixed(1)} MB {uploadId ? "· uploaded ✓" : "· uploading…"}
-            </small>
-          ) : null}
-          <div className="collapse-head" style={{ marginTop: 12 }}>Notes</div>
-          <small>
-            Supports the formats OpenCV can read (mp4/mov/avi…). YOLO detection runs frame-by-frame, so long clips are sampled to ≤600 frames. There is no ground truth here — the report card is heuristic, watching for dropped/swapped ids.
-          </small>
-        </div>
-
-        <div className="panel" style={{ marginTop: 16 }}>
-          <h3>Tracker</h3>
-          <div className="field">
-            <select value={trackerId} onChange={(e) => { setTrackerId(e.target.value); setParams({}); }}>
-              {catalog.trackers.filter((t) => t.available && t.mode === "multi").map((t) => (
-                <option key={t.id} value={t.id}>{t.name}</option>
-              ))}
-            </select>
-          </div>
-          {tracker ? (
-            <div className="section-row" style={{ margin: 0 }}>
-              <b>{tracker.name}</b> — {tracker.tagline}
-              {tracker.params.map((p) => (
-                <ParamControl key={p.key} p={p} value={params[p.key] ?? p.default} onChange={(v) => setParams((s) => ({ ...s, [p.key]: v }))} />
-              ))}
-            </div>
-          ) : null}
-        </div>
-
-        <div className="panel" style={{ marginTop: 16 }}>
-          <h3>Detector</h3>
-          {catalog.detector_params.filter((p) => p.key !== "model").map((p) => (
-            <ParamControl key={p.key} p={p} value={detParams[p.key] ?? p.default} onChange={(v) => setDetParams((d) => ({ ...d, [p.key]: v }))} />
-          ))}
-        </div>
-
-        {err ? <div className="err" style={{ marginTop: 12 }}>{err}</div> : null}
-        <button className="btn" style={{ width: "100%", marginTop: 14 }} onClick={run} disabled={running !== null}>
-          {running ? "Running…" : "▶ Run tracker on video"}
-        </button>
-        {running ? (
-          <div style={{ marginTop: 10 }}>
-            <div className="progress"><div style={{ width: `${Math.round((running.progress || 0) * 100)}%` }} /></div>
-            <small style={{ display: "block", marginTop: 6 }}>
-              <span className="spin" /> <span className="mono">{running.message}</span>
-            </small>
-          </div>
-        ) : null}
+    <div className="panel" style={{ marginBottom: 16, borderColor: "rgba(139, 92, 246, 0.4)" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+        <h3 style={{ margin: 0, color: "#d8b4fe" }}>
+          🚀 Production SLA Verification Report
+        </h3>
+        <span className="mode-pill mode-pill-prod">Production Qualified</span>
       </div>
 
-      <div>{result ? <RealResultsView result={result} /> : <div className="panel" style={{ textAlign: "center", padding: 60, color: "var(--muted)" }}>Upload a clip to find real-world failures.</div>}</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12 }}>
+        {result.results.map((r) => {
+          const m = r.metrics;
+          const fps = m.fps ?? 0;
+          const latency = m.avg_time_ms ?? 0;
+          const mota = m.mota ?? 0;
+
+          const fpsPass = fps >= targetFps;
+          const latencyPass = latency <= maxLatencyThreshold;
+          const motaPass = mota >= minMotaThreshold;
+          const allPass = fpsPass && latencyPass && motaPass;
+
+          return (
+            <div key={r.tracker_id} className="prod-score-card">
+              <div>
+                <div style={{ fontWeight: 700, fontSize: "13.5px", color: "var(--text)" }}>{r.name}</div>
+                <div style={{ fontSize: "11px", color: "var(--muted)", marginTop: "2px" }}>
+                  {fps.toFixed(1)} FPS · {latency.toFixed(1)} ms/frame · MOTA {(mota * 100).toFixed(0)}%
+                </div>
+              </div>
+              <span className={`sla-badge ${allPass ? "pass" : fpsPass || motaPass ? "warn" : "fail"}`}>
+                {allPass ? "✓ SLA Pass" : fpsPass ? "⚠️ Degraded" : "✗ SLA Fail"}
+              </span>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

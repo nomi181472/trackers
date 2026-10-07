@@ -28,8 +28,57 @@ export function TrackerPicker({
   const good = catalog.trackers.filter((t) => t.available);
   const bad = catalog.trackers.filter((t) => !t.available);
 
+  const selectAll = () => {
+    const s: Record<string, ParamValues | null> = {};
+    good.forEach((t) => (s[t.id] = { ...(catalog.defaults[t.id] || {}) }));
+    setSelected(s);
+  };
+
+  const selectRecommended = () => {
+    const s: Record<string, ParamValues | null> = {};
+    good.filter((t) => ["bytetrack", "botsort", "ocsort"].includes(t.id)).forEach((t) => {
+      s[t.id] = { ...(catalog.defaults[t.id] || {}) };
+    });
+    setSelected(s);
+  };
+
+  const clearAll = () => {
+    setSelected({});
+  };
+
+  const activeCount = good.filter((t) => selected[t.id]).length;
+
   return (
     <div>
+      <div style={{ display: "flex", gap: "6px", marginBottom: "10px", flexWrap: "wrap", alignItems: "center" }}>
+        <button
+          type="button"
+          className="btn ghost"
+          style={{ padding: "4px 10px", fontSize: "11px", borderRadius: "6px" }}
+          onClick={selectRecommended}
+        >
+          ⚡ Recommended (SOTA)
+        </button>
+        <button
+          type="button"
+          className="btn ghost"
+          style={{ padding: "4px 10px", fontSize: "11px", borderRadius: "6px" }}
+          onClick={selectAll}
+        >
+          All Available ({good.length})
+        </button>
+        <button
+          type="button"
+          className="btn ghost"
+          style={{ padding: "4px 10px", fontSize: "11px", borderRadius: "6px" }}
+          onClick={clearAll}
+        >
+          Clear
+        </button>
+        <span style={{ marginLeft: "auto", fontSize: "11px", color: "var(--muted)" }}>
+          {activeCount} selected
+        </span>
+      </div>
       {good.map((t) => (
         <TrackerCard
           key={t.id}
