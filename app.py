@@ -1,29 +1,14 @@
 import os
 import sys
+import uvicorn
+import gradio as gr
 
 # Ensure backend package is in python sys.path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "backend"))
 
-# ZeroGPU integration
-try:
-    import spaces
-except ImportError:
-    class _MockSpaces:
-        def GPU(self, *args, **kwargs):
-            def decorator(fn):
-                return fn
-            return decorator
-    spaces = _MockSpaces()
-
-import gradio as gr
 from app.main import app as fastapi_app
 
-# Top-level GPU decorated function
-@spaces.GPU
-def gpu_compute_keepalive(x: str = "") -> str:
-    return f"Active: {x}"
-
-# Define the Gradio interface
+# 1. Build an informative landing interface for the Space
 with gr.Blocks(title="Tracker Failure Simulator Backend") as demo:
     gr.Markdown("# 🎯 Tracker Failure Simulator Backend")
     gr.Markdown(
@@ -36,17 +21,14 @@ with gr.Blocks(title="Tracker Failure Simulator Backend") as demo:
         - 🔍 **Trackers Catalog**: [/api/trackers](/api/trackers)
         - 🩺 **Health Check**: [/api/health](/api/health)
         
-        *This Hugging Face Space powers the backend and compute engine for the Next.js frontend.*
+        *This Hugging Face Space powers the compute engine for the Next.js frontend.*
         """)
-    
-    trigger_btn = gr.Button("Status Check", visible=False)
-    output_txt = gr.Textbox(visible=False)
-    trigger_btn.click(fn=gpu_compute_keepalive, inputs=output_txt, outputs=output_txt)
 
-# gr.mount_gradio_app mounts the Gradio interface to the FastAPI application (at /),
-# preserving all of FastAPI's native endpoints (/api/*, /docs, /openapi.json).
+# 2. Mount Gradio onto the existing FastAPI application
+# This keeps all FastAPI routes (/api/*, /docs, /openapi.json) live and serves Gradio at /
 app = gr.mount_gradio_app(fastapi_app, demo, path="/")
 
+# 3. Launch Uvicorn on 0.0.0.0:7860 (Hugging Face Spaces default container port)
+# Running unconditionally at module level ensures the Python process remains alive permanently
 if __name__ == "__main__":
-    import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=7860)
