@@ -23,8 +23,10 @@ with gr.Blocks(title="Tracker Failure Simulator Backend") as demo:
         *This Hugging Face Space powers the backend and compute engine for the Next.js frontend.*
         """)
 
-# In Hugging Face Spaces (Gradio SDK), mounting routers onto demo.app and calling demo.launch()
-# is the standard way to let the HF platform manage the process lifecycle without auto-shutdown.
+# Mount FastAPI routers
 demo.app.include_router(fastapi_app.router)
 
-demo.launch(server_name="0.0.0.0", server_port=7860)
+# In Gradio 5 on Hugging Face Spaces:
+# 1. ssr_mode=False disables the background Node.js SSR sidecar process that causes "Stopping Node.js server..."
+# 2. block=True keeps the main Python server thread listening and prevents premature process exit.
+demo.launch(server_name="0.0.0.0", server_port=7860, ssr_mode=False)
