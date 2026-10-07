@@ -45,6 +45,7 @@ def run_real(model, cap, tracker_id: str, tracker_params: dict, det_params: dict
     device = det_params.get("device", "cpu")
 
     events, frame_log = [], []
+    latencies_ms = []
     last_box_of_track: dict[int, np.ndarray] = {}
     last_frame_of_track: dict[int, int] = {}
     loss_open: dict[int, int] = {}
@@ -77,7 +78,10 @@ def run_real(model, cap, tracker_id: str, tracker_params: dict, det_params: dict
                 arr.append([float(b[0]), float(b[1]), float(b[2]), float(b[3]), float(s)])
         det_arr = np.array(arr) if arr else np.zeros((0, 5))
 
+        import time
+        t0 = time.perf_counter()
         state = engine.update(det_arr.copy(), frame)
+        latencies_ms.append(round((time.perf_counter() - t0) * 1000.0, 2))
         cur = {tr.id: np.array(tr.box, dtype=np.float32) for tr in state.active}
 
         # --- identity heuristics -----------------------------------
@@ -164,6 +168,7 @@ def run_real(model, cap, tracker_id: str, tracker_params: dict, det_params: dict
         avg_life = float(np.mean([(last_frame_of_track.get(i, t) - spawn_frame[i] + 1) for i in spawn_frame]))
 
     id_resets = len([e for e in events if e["type"] in ("possible_id_swap", "track_loss")])
+    avg_ms = float(np.mean(latencies_ms)) if latencies_ms else 0.0
     metrics = dict(
         max_concurrent=max((f["tracks"] for f in frame_log), default=0),
         total_tracks_spawned=n_spawns,
@@ -171,6 +176,9 @@ def run_real(model, cap, tracker_id: str, tracker_params: dict, det_params: dict
         detection_rate=round(float(np.mean([f["detections"] > 0 for f in frame_log])), 3) if frame_log else 0.0,
         id_resets=id_resets,
         frames_processed=len(frame_log),
+        avg_time_ms=round(avg_ms, 2),
+        fps=round(1000.0 / avg_ms, 1) if avg_ms > 0 else 0.0,
+        latencies=latencies_ms,
     )
     lines = [
         f"{metrics['total_tracks_spawned']} track ids were created over the clip "

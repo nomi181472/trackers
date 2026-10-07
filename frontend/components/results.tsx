@@ -61,7 +61,11 @@ export function ResultCard({ r, fps = 15 }: { r: TrackerResult; fps?: number }) 
         {typeof m.ml === "number" && isFinite(m.ml) ? <MSum label="ML" v={m.ml} best="low" /> : null}
         {typeof m.accuracy === "number" && isFinite(m.accuracy) ? <MSum label="Accuracy" v={m.accuracy} best="high" /> : null}
         {typeof m.total_visible === "number" ? <MSum label="Missed frames" v={m.lost_frames ?? 0} best="low" /> : null}
+        {typeof m.avg_time_ms === "number" && isFinite(m.avg_time_ms) ? <MSum label="Avg latency" v={m.avg_time_ms} unit="ms" best="low" /> : null}
+        {typeof m.fps === "number" && isFinite(m.fps) ? <MSum label="Tracker speed" v={m.fps} unit="FPS" best="high" /> : null}
       </div>
+
+      {m.latencies?.length ? <LatencyGraph latencies={m.latencies} avgMs={m.avg_time_ms} /> : null}
 
       {r.report ? (
         <div className="report">
@@ -116,22 +120,74 @@ export function ResultCard({ r, fps = 15 }: { r: TrackerResult; fps?: number }) 
   );
 }
 
+function LatencyGraph({ latencies, avgMs }: { latencies: number[]; avgMs?: number }) {
+  const width = 300;
+  const height = 64;
+  const pad = 6;
+  const maxVal = Math.max(...latencies, 1);
+  const minVal = 0;
+
+  const points = latencies.map((val, idx) => {
+    const x = pad + (idx / Math.max(latencies.length - 1, 1)) * (width - 2 * pad);
+    const y = height - pad - ((val - minVal) / (maxVal - minVal)) * (height - 2 * pad);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(" ");
+
+  const avgY = avgMs != null
+    ? height - pad - ((avgMs - minVal) / (maxVal - minVal)) * (height - 2 * pad)
+    : null;
+
+  return (
+    <div style={{ padding: "4px 14px 10px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4, fontSize: 11, color: "var(--muted)" }}>
+        <span>Frame Latency Curve</span>
+        <span>Peak: <b style={{ color: "var(--text)" }}>{maxVal.toFixed(1)} ms</b></span>
+      </div>
+      <div style={{ background: "var(--bg-3)", border: "1px solid var(--line)", borderRadius: 6, padding: "4px 6px" }}>
+        <svg viewBox={`0 0 ${width} ${height}`} style={{ width: "100%", height: 50, display: "block" }}>
+          {/* Average reference line */}
+          {avgY != null && (
+            <line
+              x1={pad}
+              y1={avgY}
+              x2={width - pad}
+              y2={avgY}
+              stroke="var(--line)"
+              strokeDasharray="3 3"
+              strokeWidth="1"
+            />
+          )}
+          {/* Latency line */}
+          <polyline
+            fill="none"
+            stroke="var(--accent)"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            points={points}
+          />
+        </svg>
+      </div>
+    </div>
+  );
+}
+
 function seek(url: string, frame: number, fps: number) {
   const v = document.querySelector(`video[src="${mediaUrl(url)}"]`) as HTMLVideoElement | null;
   if (v) v.currentTime = frame / Math.max(fps, 1);
 }
 
-function MSum({ label, v, best }: { label: string; v: number; best: "high" | "low" }) {
+function MSum({ label, v, unit, best }: { label: string; v: number; unit?: string; best: "high" | "low" }) {
   return (
     <span className="metric">
-      <b>{FMT.format(v)}</b>
+      <b>{FMT.format(v)}{unit ? ` ${unit}` : ""}</b>
       {label}
     </span>
   );
 }
 
 export function CompareTable({ history }: { history: SimulationResult[] }) {
-  type Row = { name: string; mota: number | null; idf1: number | null; idsw: number | null; acc: number | null };
+  type Row = { name: string; mota: number | null; idf1: number | null; idsw: number | null; acc: number | null; avg_time_ms: number | null; fps: number | null };
   const latest = history[0];
   const prev = history[1];
   const nameOf = (r: TrackerResult) => r.name;
@@ -142,11 +198,15 @@ export function CompareTable({ history }: { history: SimulationResult[] }) {
       idf1: r.metrics.idf1 ?? null,
       idsw: r.metrics.idsw ?? null,
       acc: r.mode === "single" ? r.metrics.accuracy ?? null : null,
+      avg_time_ms: r.metrics.avg_time_ms ?? null,
+      fps: r.metrics.fps ?? null,
     };
   });
   const withMota = cells.filter((c) => c.mota != null);
   const best = (key: keyof Row) =>
-    key === "idsw" ? Math.min(...withMota.map((c) => (c[key] as number) ?? Infinity)) : Math.max(...withMota.map((c) => (c[key] as number) ?? -Infinity));
+    key === "idsw" || key === "avg_time_ms"
+      ? Math.min(...cells.map((c) => (c[key] as number) ?? Infinity))
+      : Math.max(...cells.map((c) => (c[key] as number) ?? -Infinity));
 
   return (
     <div className="compare">
@@ -160,6 +220,8 @@ export function CompareTable({ history }: { history: SimulationResult[] }) {
               <th>IDF1</th>
               <th>ID switches</th>
               <th>Single-obj accuracy</th>
+              <th>Avg Latency</th>
+              <th>Speed</th>
             </tr>
           </thead>
           <tbody>
@@ -170,6 +232,8 @@ export function CompareTable({ history }: { history: SimulationResult[] }) {
                 <td>{c.idf1 != null ? FMT.format(c.idf1) : "—"}</td>
                 <td>{c.idsw != null ? FMT.format(c.idsw) : "—"}</td>
                 <td>{c.acc != null ? FMT.format(c.acc) : "—"}</td>
+                <td className="mono">{c.avg_time_ms != null ? `${FMT.format(c.avg_time_ms)} ms` : "—"}</td>
+                <td className="mono">{c.fps != null ? `${FMT.format(c.fps)} FPS` : "—"}</td>
               </tr>
             ))}
           </tbody>

@@ -82,6 +82,9 @@ export interface Metrics {
   gt_total?: number;
   gt_objects?: number;
   frames?: number;
+  avg_time_ms?: number;
+  fps?: number;
+  latencies?: number[];
 }
 
 export interface ReportSection {

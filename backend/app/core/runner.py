@@ -168,17 +168,23 @@ def run_simulation(scenario, specs: list[dict], detection_params: dict,
                 continue
 
         track_frames = []
+        latencies_ms = []
         try:
             for t in range(T):
                 img = scenario.frames[t]
+                import time
                 if meta["mode"] == "single":
                     if t == seed_frame:
                         target = next(e for e in scenario.gt[t]
                                       if e["id"] == scenario.target_id())
                         engine.init(img, target["box"])
+                    t0 = time.perf_counter()
                     state = engine.update(np.zeros((0, 5)), img)
+                    latencies_ms.append(round((time.perf_counter() - t0) * 1000.0, 2))
                 else:
+                    t0 = time.perf_counter()
                     state = engine.update(dets_frames[t], img)
+                    latencies_ms.append(round((time.perf_counter() - t0) * 1000.0, 2))
                 track_frames.append(state.active)
                 done += 1
                 if done % max(1, T // 5) == 0:
@@ -191,6 +197,11 @@ def run_simulation(scenario, specs: list[dict], detection_params: dict,
 
         tick(f"Scoring {meta['name']}", 0.9 + 0.05 * si)
         eval_res = evaluate(scenario, tid, track_frames, dets_frames)
+        if latencies_ms:
+            avg_ms = float(np.mean(latencies_ms))
+            eval_res.metrics["avg_time_ms"] = round(avg_ms, 2)
+            eval_res.metrics["fps"] = round(1000.0 / avg_ms, 1) if avg_ms > 0 else 0.0
+            eval_res.metrics["latencies"] = latencies_ms
         report = explain(scenario.meta, tid, eval_res.metrics, [e.to_dict() for e in eval_res.events])
 
         # ---- render annotated video ---- #
