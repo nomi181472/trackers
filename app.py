@@ -7,7 +7,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "backend"))
 import gradio as gr
 from app.main import app as fastapi_app
 
-# Define a clean landing view for Hugging Face visitors
+# Define the Gradio interface
 with gr.Blocks(title="Tracker Failure Simulator Backend") as demo:
     gr.Markdown("# 🎯 Tracker Failure Simulator Backend")
     gr.Markdown(
@@ -23,10 +23,8 @@ with gr.Blocks(title="Tracker Failure Simulator Backend") as demo:
         *This Hugging Face Space powers the backend and compute engine for the Next.js frontend.*
         """)
 
-# Mount the Gradio interface onto the existing FastAPI application
-app = gr.mount_gradio_app(fastapi_app, demo, path="/")
+# In Hugging Face Spaces (Gradio SDK), mounting routers onto demo.app and calling demo.launch()
+# is the standard way to let the HF platform manage the process lifecycle without auto-shutdown.
+demo.app.include_router(fastapi_app.router)
 
-if __name__ == "__main__":
-    import uvicorn
-    # Hugging Face Spaces exposes port 7860
-    uvicorn.run(app, host="0.0.0.0", port=7860)
+demo.launch(server_name="0.0.0.0", server_port=7860)
