@@ -151,19 +151,36 @@ def test_partial_detection_payload_is_merged_not_replaced(client):
     assert set(stored) == set(DETECTION_DEFAULTS)
 
 
-def test_cleanup_endpoint(client):
-    # Create test dummy files
+def test_cleanup_and_clear_endpoints(client):
+    # Create test dummy files (including nested job files)
+    nested_dir = config.JOBS_DIR / "nested"
+    nested_dir.mkdir(parents=True, exist_ok=True)
+    dummy_nested_mp4 = nested_dir / "dummy_nested.mp4"
+    dummy_nested_jpg = nested_dir / "dummy_nested.jpg"
     dummy_job_mp4 = config.JOBS_DIR / "dummy_test.mp4"
     dummy_job_jpg = config.JOBS_DIR / "dummy_test.jpg"
     dummy_sc_mp4 = config.SCENARIOS_DIR / "dummy_sc.mp4"
-    dummy_job_mp4.write_bytes(b"dummy")
-    dummy_job_jpg.write_bytes(b"dummy")
-    dummy_sc_mp4.write_bytes(b"dummy")
 
-    r = client.post("/api/cleanup")
+    for p in (dummy_nested_mp4, dummy_nested_jpg, dummy_job_mp4, dummy_job_jpg, dummy_sc_mp4):
+        p.write_bytes(b"dummy")
+
+    # Test POST /api/clear
+    r = client.post("/api/clear")
     assert r.status_code == 200
     data = r.json()
     assert data["ok"] is True
-    assert data["deleted_count"] >= 3
+    assert data["deleted_count"] >= 5
+    assert not dummy_job_mp4.exists()
+    assert not dummy_job_jpg.exists()
+    assert not dummy_nested_mp4.exists()
+    assert not dummy_nested_jpg.exists()
+    assert not dummy_sc_mp4.exists()
+
+    # Re-create and test DELETE /api/clear
+    dummy_job_mp4.write_bytes(b"dummy")
+    dummy_sc_mp4.write_bytes(b"dummy")
+    r_del = client.delete("/api/clear")
+    assert r_del.status_code == 200
+    assert r_del.json()["ok"] is True
     assert not dummy_job_mp4.exists()
     assert not dummy_sc_mp4.exists()
