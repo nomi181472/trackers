@@ -5,8 +5,8 @@ services:
   - type: web
     name: tracker-simulator-backend
     runtime: docker
-    dockerfilePath: backend/Dockerfile
-    dockerContext: backend
+    dockerfilePath: Dockerfile
+    dockerContext: .
     plan: free
     region: oregon
     healthCheckPath: /api/health
