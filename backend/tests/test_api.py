@@ -149,3 +149,21 @@ def test_partial_detection_payload_is_merged_not_replaced(client):
     assert stored["jitter"] == DETECTION_DEFAULTS["jitter"]
     assert stored["fp_rate"] == DETECTION_DEFAULTS["fp_rate"]
     assert set(stored) == set(DETECTION_DEFAULTS)
+
+
+def test_cleanup_endpoint(client):
+    # Create test dummy files
+    dummy_job_mp4 = config.JOBS_DIR / "dummy_test.mp4"
+    dummy_job_jpg = config.JOBS_DIR / "dummy_test.jpg"
+    dummy_sc_mp4 = config.SCENARIOS_DIR / "dummy_sc.mp4"
+    dummy_job_mp4.write_bytes(b"dummy")
+    dummy_job_jpg.write_bytes(b"dummy")
+    dummy_sc_mp4.write_bytes(b"dummy")
+
+    r = client.post("/api/cleanup")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["ok"] is True
+    assert data["deleted_count"] >= 3
+    assert not dummy_job_mp4.exists()
+    assert not dummy_sc_mp4.exists()
