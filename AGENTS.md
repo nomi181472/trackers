@@ -26,4 +26,5 @@ This project is an **interactive failure and stress-testing simulator for Multi-
    - `POST /api/simulations`: Start asynchronous multi-tracker evaluation job.
    - `GET /api/jobs/{id}`: Poll status, events, natural-language failure diagnostics, and metrics.
    - `GET /api/media/{file}`: Retrieve rendered video clips and failure thumbnails.
+   - `POST/DELETE /api/clear` (or `/api/cleanup`): Clear and delete generated records (`backend/data/jobs/**/*.mp4`, `backend/data/jobs/**/*.jpg`, `backend/data/scenarios/*.mp4`).
    - Real video endpoints (`/api/real/upload`, `/api/real/jobs`) and detector model weights are intentionally omitted.

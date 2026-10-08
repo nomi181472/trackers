@@ -254,6 +254,8 @@ def get_log_lines(
 
 @router.post("/cleanup")
 @router.delete("/cleanup")
+@router.post("/clear")
+@router.delete("/clear")
 def cleanup_data_files(
     include_uploads: bool = False,
     include_jobs: bool = True,
