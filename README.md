@@ -416,6 +416,76 @@ Your custom tracker is now fully integrated into the simulation engine, REST API
 
 ---
 
+## 🏛️ Architectural Scope & Production Readiness Roadmap
+
+A critical assessment of the simulator across software engineering and research dimensions:
+
+| Dimension | Status | Assessment Context & Scope Clarification |
+|---|---|---|
+| **Product Idea** | 🟢 Strong | Solves an acute pain point: isolates tracking association regressions from upstream detector noise. |
+| **Architecture (Research/Demo)** | 🟢 Good | Clean plugin registry, unified synthetic stream, zero-checkpoint standalone MOT algorithms. |
+| **UX & Demo Potential** | 🟢 Very Good | Side-by-side video rendering, frame-accurate failure scrubbing, interactive parameter tuning. |
+| **Tracker Experimentation** | 🟢 Good | 18 algorithms spanning classical, standalone MOT, and ReID architectures on identical test conditions. |
+| **Code Organization** | 🟢 Good | Modular backend (`core/engine`, `core/trackers`, `core/plugins`), clean Next.js 15 UI, clear separation of concerns. |
+| **Scientific Evaluation** | 🟡 Needs Validation | Uses standard CLEAR MOT (`MOTA`, `MOTP`) & `IDF1` verified against `py-motmetrics`; multi-run statistical variance (seed sweeps) is being expanded. |
+| **Security** | 🔴 Weak *(By Design)* | **Experimental Lab Scope**: Local simulation tool without public authentication, user tenancy, or rate-limiting. |
+| **Resource Protection** | 🔴 Weak *(By Design)* | In-memory frame manipulation and local disk caching without process cgroups or disk quota enforcement. |
+| **Docker Production Deployment** | 🔴 Problematic *(By Design)* | Optimized for single-node local development and demo hosting, not hardened multi-tenant container orchestration. |
+| **Dependency Reproducibility** | 🟠 Weak | Permissive version ranges (`>=`) allow rapid local experimentation; pinned lockfiles provide deterministic builds. |
+| **Scalability** | 🔴 Poor *(By Design)* | ThreadPool/ProcessPool worker model suited for single-workstation analysis, not distributed cloud queues. |
+| **Production Readiness** | 🔴 Not Ready *(By Design)* | Designed strictly as an **interactive diagnostic and research workbench**, not an enterprise SaaS service. |
+
+---
+
+### 🔬 Why Security, Resource Limits, and Scale Are Kept Lightweight (Design Rationale)
+
+This project is deliberately designed as an **offline, developer-facing research laboratory and diagnostic benchmark**, not an Internet-facing enterprise multi-tenant microservice. 
+
+1. **Security & Authentication**:
+   - The REST API runs entirely locally (`localhost`) or within trusted sandbox research environments.
+   - It does not ingest untrusted user uploads (no external video upload endpoint, no arbitrary binary execution, no arbitrary SQL/database).
+   - Adding JWT auth, OAuth2 handshakes, and role-based permissions would add unnecessary friction to local test scripts and interactive exploratory research.
+
+2. **Resource Protection & Sandboxing**:
+   - Synthetic scenes are rendered on-demand in NumPy arrays with bounded dimensions ($1280 \times 720$ at 30–60 FPS) and bounded durations (5–15 seconds).
+   - Video artifacts are written locally and can be purged at any moment with a single click or `POST /api/clear`.
+   - OS-level cgroup throttling, memory quotas, and disk limiters are omitted to maximize raw NumPy/SciPy computation speed on developer workstations.
+
+3. **Docker & Single-Node Focus**:
+   - The provided `Dockerfile` and `docker-compose.yml` are lightweight turn-key environments for running the diagnostic tool without manual Python/Node setup.
+   - They prioritize rapid iteration, fast startup, and native OpenCV/ffmpeg compilation over complex multi-stage Kubernetes hardening.
+
+---
+
+### 🚀 Roadmap: How to Overcome These Gaps for Production & Scaled Research
+
+If you are planning to extend this engine into a production-grade cloud service or an enterprise benchmarking platform, follow this hardening roadmap:
+
+#### 1. Security & Access Control
+- **Reverse Proxy & Gateway**: Wrap the backend with Nginx, Traefik, or Envoy to enforce HTTPS/TLS termination and DDoS rate-limiting.
+- **Authentication & API Keys**: Integrate FastAPI security middleware (`OAuth2PasswordBearer` or header-based API keys with `fastapi.security`).
+- **Input Validation & Sanitization**: Restrict hyperparameter boundaries, scenario length, and frame sizes using strict Pydantic models.
+
+#### 2. Resource Protection & Throttling
+- **Worker Isolation**: Isolate video rendering and tracker evaluation into sandboxed workers (e.g. Docker-in-Docker or gVisor / Firecracker microVMs).
+- **Execution Budgets**: Enforce hard execution timeouts (`asyncio.wait_for`, Celery task timeouts) and memory ceilings using `ulimit` or Linux cgroups.
+- **Storage Lifecycle**: Implement automated artifact TTLs (e.g., auto-deleting rendered videos older than 1 hour or streaming directly to S3 / MinIO buckets with lifecycle expiration rules).
+
+#### 3. Scalability & Distributed Queue Architecture
+- **Decoupled Task Queue**: Replace the in-process `ThreadPoolExecutor` with **Celery**, **ARQ**, or **Redis Streams** backed by Redis or RabbitMQ.
+- **Stateless API Tier**: Decouple the FastAPI API layer from simulation execution, allowing the API gateway to scale horizontally across multiple instances.
+- **Autoscaling GPU/CPU Workers**: Run simulation workers on Kubernetes (K8s) with KEDA (Kubernetes Event-driven Autoscaling) to scale compute workers based on queue depth.
+
+#### 4. Dependency Reproducibility
+- **Deterministic Lockfiles**: While `requirements.txt` keeps broad version ranges for easy local updates, use `pip-tools` (`requirements.lock`) or `poetry.lock` / `uv.lock` for bit-for-bit reproducible environments.
+- **Multi-Arch Docker Images**: Automated CI/CD (GitHub Actions) building pinned, multi-arch container images (`linux/amd64`, `linux/arm64`) with strict digest pinning (`sha256:...`).
+
+#### 5. Scientific Rigor & Benchmark Validation
+- **Seed Sweeps & Confidence Intervals**: Run synthetic scenarios across $N \ge 30$ pseudo-random seeds per parameter configuration to report mean $\pm$ standard deviation for MOTA, MOTP, and IDF1.
+- **Standard Dataset Cross-Validation**: Expose validation adapters for MOT17, MOT20, and DanceTrack ground-truth sequences alongside synthetic scenarios to correlate synthetic failure diagnostics directly with real-world track loss.
+
+---
+
 ## 📚 References & Citations
 
 If you use this benchmark simulator or any of the tracker implementations in your academic research, industrial evaluations, or publications, please cite the respective foundational works:

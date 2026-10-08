@@ -59,7 +59,7 @@ class KalmanFilterXYAH:
         std = [
             self._std_weight_position * mean[3],
             self._std_weight_position * mean[3],
-            1e-1,
+            1e-2,
             self._std_weight_position * mean[3],
         ]
         innovation_cov = np.diag(np.square(std))

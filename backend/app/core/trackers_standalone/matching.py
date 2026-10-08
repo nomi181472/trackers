@@ -80,12 +80,26 @@ def iou_distance(atracks, btracks) -> np.ndarray:
 
 def embedding_distance(tracks, detections, metric: str = "cosine") -> np.ndarray:
     """Compute cosine distance between track embeddings and detection embeddings."""
-    cost_matrix = np.zeros((len(tracks), len(detections)), dtype=np.float64)
+    cost_matrix = np.ones((len(tracks), len(detections)), dtype=np.float64)
     if cost_matrix.size == 0:
         return cost_matrix
-    det_features = np.asarray([d.curr_feat for d in detections], dtype=np.float64)
-    track_features = np.asarray([track.smooth_feat for track in tracks], dtype=np.float64)
-    cost_matrix = np.maximum(0.0, 1.0 - np.dot(track_features, det_features.T))
+
+    valid_t = [i for i, t in enumerate(tracks) if getattr(t, "smooth_feat", None) is not None]
+    valid_d = [j for j, d in enumerate(detections) if getattr(d, "curr_feat", None) is not None]
+
+    if not valid_t or not valid_d:
+        return cost_matrix
+
+    track_feats = np.asarray([tracks[i].smooth_feat for i in valid_t], dtype=np.float64)
+    det_feats = np.asarray([detections[j].curr_feat for j in valid_d], dtype=np.float64)
+
+    dot_prod = np.dot(track_feats, det_feats.T)
+    cos_dists = np.maximum(0.0, 1.0 - dot_prod)
+
+    for ti_idx, ti in enumerate(valid_t):
+        for di_idx, di in enumerate(valid_d):
+            cost_matrix[ti, di] = cos_dists[ti_idx, di_idx]
+
     return cost_matrix
 
 

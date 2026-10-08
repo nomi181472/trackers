@@ -45,7 +45,8 @@ class OCSortTrack(STrack):
     def _record_observation(self, obs: np.ndarray, frame_id: int):
         self.observations[frame_id] = obs
         self.last_observation = obs
-        prev_fid = frame_id - self.delta_t
+        eff_delta = max(1, self.delta_t)
+        prev_fid = frame_id - eff_delta
         if prev_fid in self.observations:
             prev_obs = self.observations[prev_fid]
             cx_curr = (obs[0] + obs[2]) / 2
@@ -127,8 +128,9 @@ class OCSORT(BYTETracker):
 
         if self.inertia > 0 and len(strack_pool) and len(detections):
             for i, tr in enumerate(strack_pool):
-                if tr.velocity is not None and np.linalg.norm(tr.velocity) > 1e-3:
-                    v_dir = tr.velocity / np.linalg.norm(tr.velocity)
+                tr_vel = getattr(tr, "velocity", None)
+                if tr_vel is not None and np.linalg.norm(tr_vel) > 1e-3:
+                    v_dir = tr_vel / np.linalg.norm(tr_vel)
                     for j, det in enumerate(detections):
                         cx_t = (tr.xyxy[0] + tr.xyxy[2]) / 2
                         cy_t = (tr.xyxy[1] + tr.xyxy[3]) / 2
@@ -257,4 +259,189 @@ class DeepOCSORT(OCSORT):
         self.appearance_thresh = getattr(args, "appearance_thresh", 0.9)
         self.alpha_fixed_emb = getattr(args, "alpha_fixed_emb", 0.95)
         self.gmc = GMC(method=getattr(args, "gmc_method", "none"))
-        self.embedder = SimulatorCropEmbedder() if self.with_reid else None
+        self.model = getattr(args, "model", "auto")
+        self.embedder = SimulatorCropEmbedder(model=self.model) if self.with_reid else None
+
+    def update(self, dets: np.ndarray, img: np.ndarray = None) -> np.ndarray:
+        self.frame_id += 1
+        activated_stracks = []
+        refind_stracks = []
+        lost_stracks = []
+        removed_stracks = []
+
+        # 1. GMC camera motion compensation
+        if img is not None and self.gmc.method not in (None, "none"):
+            warp = self.gmc.apply(img)
+            R = warp[:2, :2]
+            t = warp[:2, 2]
+            for tr in joint_stracks(self.tracked_stracks, self.lost_stracks):
+                if tr.mean is not None:
+                    tr.mean[:2] = np.dot(R, tr.mean[:2]) + t
+                    tr.mean[4:6] = np.dot(R, tr.mean[4:6])
+
+        # 2. Extract visual features if ReID enabled
+        features = None
+        if len(dets) > 0 and self.with_reid and img is not None:
+            features = [self.embedder.extract(img, d[:4]) for d in dets]
+
+        if len(dets) == 0:
+            scores = np.empty(0, dtype=np.float32)
+            bboxes = np.empty((0, 4), dtype=np.float32)
+            classes = np.empty(0, dtype=int)
+            indices = np.empty(0, dtype=int)
+        else:
+            dets = np.asarray(dets, dtype=np.float64)
+            scores = dets[:, 4]
+            bboxes = dets[:, :4]
+            classes = dets[:, 5] if dets.shape[1] > 5 else np.zeros(len(dets), dtype=int)
+            indices = np.arange(len(dets))
+
+        remain_inds = scores >= self.track_high_thresh
+        inds_low = scores > self.track_low_thresh
+        inds_high = scores < self.track_high_thresh
+        inds_second = np.logical_and(inds_low, inds_high)
+
+        dets_first = bboxes[remain_inds]
+        dets_second = bboxes[inds_second]
+        scores_keep = scores[remain_inds]
+        scores_second = scores[inds_second]
+        cls_first = classes[remain_inds]
+        cls_second = classes[inds_second]
+        idx_first = indices[remain_inds]
+        idx_second = indices[inds_second]
+
+        def _to_xywh_with_idx(boxes, idxs):
+            if len(boxes) == 0:
+                return np.empty((0, 5), dtype=np.float32)
+            w = boxes[:, 2] - boxes[:, 0]
+            h = boxes[:, 3] - boxes[:, 1]
+            cx = boxes[:, 0] + w / 2
+            cy = boxes[:, 1] + h / 2
+            return np.stack([cx, cy, w, h, idxs], axis=1)
+
+        feats_first = [features[i] for i in np.where(remain_inds)[0]] if features else [None] * len(dets_first)
+        feats_second = [features[i] for i in np.where(inds_second)[0]] if features else [None] * len(dets_second)
+
+        detections = [
+            DeepOCSortTrack(box, score, c, self.delta_t, feat=f, alpha_fixed_emb=self.alpha_fixed_emb)
+            for (box, score, c, f) in zip(_to_xywh_with_idx(dets_first, idx_first), scores_keep, cls_first, feats_first)
+        ]
+
+        unconfirmed = []
+        tracked_stracks = []
+        for track in self.tracked_stracks:
+            if not track.is_activated:
+                unconfirmed.append(track)
+            else:
+                tracked_stracks.append(track)
+
+        strack_pool = joint_stracks(tracked_stracks, self.lost_stracks)
+        STrack.multi_predict(strack_pool)
+
+        # Distance matrix calculation with IoU and optional ReID
+        dists = matching.iou_distance(strack_pool, detections)
+        if self.fuse_score:
+            dists = matching.fuse_score(dists, detections)
+
+        if self.with_reid and len(strack_pool) and len(detections):
+            emb_dists = matching.embedding_distance(strack_pool, detections)
+            raw_ious = 1.0 - dists
+            # Only consider appearance when proximate and appearance similarity meets threshold
+            mask = (raw_ious >= self.proximity_thresh) & (emb_dists <= (1.0 - self.appearance_thresh))
+            dists = np.where(mask, np.minimum(dists, emb_dists), dists)
+
+        if self.inertia > 0 and len(strack_pool) and len(detections):
+            for i, tr in enumerate(strack_pool):
+                tr_vel = getattr(tr, "velocity", None)
+                if tr_vel is not None and np.linalg.norm(tr_vel) > 1e-3:
+                    v_dir = tr_vel / np.linalg.norm(tr_vel)
+                    for j, det in enumerate(detections):
+                        cx_t = (tr.xyxy[0] + tr.xyxy[2]) / 2
+                        cy_t = (tr.xyxy[1] + tr.xyxy[3]) / 2
+                        cx_d = (det.xyxy[0] + det.xyxy[2]) / 2
+                        cy_d = (det.xyxy[1] + det.xyxy[3]) / 2
+                        d_vec = np.array([cx_d - cx_t, cy_d - cy_t])
+                        d_norm = np.linalg.norm(d_vec)
+                        if d_norm > 1e-3:
+                            cos_sim = np.dot(v_dir, d_vec / d_norm)
+                            if cos_sim < 0:
+                                dists[i, j] += self.inertia * (-cos_sim)
+
+        matches, u_track, u_detection = matching.linear_assignment(dists, thresh=self.match_thresh)
+
+        for itracked, idet in matches:
+            track = strack_pool[itracked]
+            det = detections[idet]
+            if track.state == TrackState.Tracked:
+                track.update(det, self.frame_id)
+                activated_stracks.append(track)
+            else:
+                track.re_activate(det, self.frame_id, new_id=False)
+                refind_stracks.append(track)
+
+        if self.use_byte:
+            detections_second = [
+                DeepOCSortTrack(box, score, c, self.delta_t, feat=f, alpha_fixed_emb=self.alpha_fixed_emb)
+                for (box, score, c, f) in zip(_to_xywh_with_idx(dets_second, idx_second), scores_second, cls_second, feats_second)
+            ]
+            r_tracked_stracks = [strack_pool[i] for i in u_track if strack_pool[i].state == TrackState.Tracked]
+            dists = matching.iou_distance(r_tracked_stracks, detections_second)
+            matches, u_track_second, _ = matching.linear_assignment(dists, thresh=0.5)
+
+            for itracked, idet in matches:
+                track = r_tracked_stracks[itracked]
+                det = detections_second[idet]
+                if track.state == TrackState.Tracked:
+                    track.update(det, self.frame_id)
+                    activated_stracks.append(track)
+                else:
+                    track.re_activate(det, self.frame_id, new_id=False)
+                    refind_stracks.append(track)
+
+            for it in u_track_second:
+                track = r_tracked_stracks[it]
+                if track.state != TrackState.Lost:
+                    track.mark_lost()
+                    lost_stracks.append(track)
+        else:
+            for it in u_track:
+                track = strack_pool[it]
+                if track.state != TrackState.Lost:
+                    track.mark_lost()
+                    lost_stracks.append(track)
+
+        # Unconfirmed
+        detections_rem = [detections[i] for i in u_detection]
+        dists = matching.iou_distance(unconfirmed, detections_rem)
+        if self.fuse_score:
+            dists = matching.fuse_score(dists, detections_rem)
+        matches, u_unconfirmed, u_detection_rem = matching.linear_assignment(dists, thresh=0.7)
+
+        for itracked, idet in matches:
+            unconfirmed[itracked].update(detections_rem[idet], self.frame_id)
+            activated_stracks.append(unconfirmed[itracked])
+        for it in u_unconfirmed:
+            track = unconfirmed[it]
+            track.mark_removed()
+            removed_stracks.append(track)
+
+        # New
+        for inew in u_detection_rem:
+            track = detections_rem[inew]
+            if track.score >= self.new_track_thresh:
+                track.activate(self.kalman_filter, self.frame_id)
+                activated_stracks.append(track)
+
+        for track in self.lost_stracks:
+            if self.frame_id - track.end_frame > self.max_time_lost:
+                track.mark_removed()
+                removed_stracks.append(track)
+
+        merge_track_pools(self, activated_stracks, refind_stracks, lost_stracks, removed_stracks)
+
+        output_stracks = [track for track in self.tracked_stracks if track.is_activated]
+        out = []
+        for t in output_stracks:
+            box = t.xyxy
+            out.append([box[0], box[1], box[2], box[3], t.track_id, t.score, t.cls, t.idx])
+        return np.asarray(out, dtype=np.float64) if len(out) else np.empty((0, 8), dtype=np.float64)

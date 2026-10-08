@@ -138,8 +138,11 @@ class TrackTrack(BYTETracker):
         if total_w > 0:
             cost /= total_w
 
+        if is_lost and penalty == 0.0 and self.penalty_q > 0:
+            penalty = self.penalty_q
+
         if penalty > 0:
-            cost += penalty
+            cost = cost + penalty
 
         return cost
 
@@ -193,8 +196,9 @@ class TrackTrack(BYTETracker):
                 R = warp[:2, :2]
                 t = warp[:2, 2]
                 for tr in self.tracked_stracks + self.lost_stracks:
-                    tr.mean[:2] = np.dot(R, tr.mean[:2]) + t
-                    tr.mean[4:6] = np.dot(R, tr.mean[4:6])
+                    if tr.mean is not None:
+                        tr.mean[:2] = np.dot(R, tr.mean[:2]) + t
+                        tr.mean[4:6] = np.dot(R, tr.mean[4:6])
 
         # Feature extraction if ReID enabled
         features = None
@@ -260,10 +264,10 @@ class TrackTrack(BYTETracker):
         TrackTrackSTrack.multi_predict(strack_pool)
         TrackTrackSTrack.multi_predict(unconfirmed_tracked)
 
-        # Step 1: Iterative assignment with high-confidence detections
+        base_thresh = self.lost_match_thr if (self.lost_match_thr > 0 and len(self.lost_stracks) > 0) else self.match_thresh
         matches, u_track, u_detection = self._iterative_assignment(
             strack_pool, detections,
-            base_thresh=self.match_thresh,
+            base_thresh=base_thresh,
             reduce_step=self.reduce_step
         )
 

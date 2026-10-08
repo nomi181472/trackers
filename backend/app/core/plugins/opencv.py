@@ -23,7 +23,9 @@ class OpenCVSingleTracker(Engine):
 
     def __init__(self, tracker_id: str, params: dict):
         self.tracker_id = tracker_id
+        self.params = params
         self.max_age = int(params.get("max_age", 30))
+        self.psr_threshold = float(params.get("psr_threshold", 0.1))
         self._age = 0
         self._tracker = None
         self._id = 0
@@ -35,7 +37,15 @@ class OpenCVSingleTracker(Engine):
         if factory is None:
             raise ValueError(f"OpenCV tracker '{self.tracker_id}' not available in this build "
                              f"(available: {sorted((_opencv_probe() or {}).keys())})")
-        self._tracker = factory()
+        if self.tracker_id == "csrt" and hasattr(cv2, "TrackerCSRT_Params"):
+            try:
+                csrt_params = cv2.TrackerCSRT_Params()
+                csrt_params.psrThreshold = float(self.psr_threshold)
+                self._tracker = cv2.TrackerCSRT_create(csrt_params)
+            except Exception:
+                self._tracker = factory()
+        else:
+            self._tracker = factory()
         x1, y1, x2, y2 = box
         self._tracker.init(img, (int(x1), int(y1), int(x2 - x1), int(y2 - y1)))
         self.active = True

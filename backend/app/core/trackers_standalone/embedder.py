@@ -7,8 +7,9 @@ import numpy as np
 class SimulatorCropEmbedder:
     """Extracts a normalized 64-dimensional appearance feature vector from an image bounding box crop."""
 
-    def __init__(self, target_size: tuple[int, int] = (64, 64)):
+    def __init__(self, target_size: tuple[int, int] = (64, 64), model: str = "auto"):
         self.target_size = target_size
+        self.model = model
 
     def extract(self, img: np.ndarray, box: list | np.ndarray) -> np.ndarray:
         if img is None or img.size == 0:

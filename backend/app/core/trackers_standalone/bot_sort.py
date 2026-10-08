@@ -65,7 +65,7 @@ class BOTrack(STrack):
             multi_covariance = np.asarray([st.covariance for st in stracks])
             for i, st in enumerate(stracks):
                 if st.state != TrackState.Tracked:
-                    multi_mean[i][7] = 0
+                    multi_mean[i, 4:8] = 0
             multi_mean, multi_covariance = BOTrack.shared_kalman.multi_predict(multi_mean, multi_covariance)
             for i, (mean, cov) in enumerate(zip(multi_mean, multi_covariance)):
                 stracks[i].mean = mean
@@ -79,7 +79,8 @@ class BOTSORT(BYTETracker):
         self.appearance_thresh = getattr(args, "appearance_thresh", 0.8)
         self.with_reid = getattr(args, "with_reid", False)
         self.gmc = GMC(method=getattr(args, "gmc_method", "sparseOptFlow"))
-        self.embedder = SimulatorCropEmbedder() if self.with_reid else None
+        self.model = getattr(args, "model", "auto")
+        self.embedder = SimulatorCropEmbedder(model=self.model) if self.with_reid else None
         self.kalman_filter = KalmanFilterXYWH()
 
     def update(self, dets: np.ndarray, img: np.ndarray = None) -> np.ndarray:
@@ -165,9 +166,9 @@ class BOTSORT(BYTETracker):
 
         if self.with_reid and len(strack_pool) and len(detections):
             emb_dists = matching.embedding_distance(strack_pool, detections)
-            # ReID gating: only consider appearance when proximate
+            # ReID gating: only consider appearance when proximate and similar
             raw_ious = 1.0 - dists
-            mask = raw_ious < self.proximity_thresh
+            mask = (raw_ious >= self.proximity_thresh) & (emb_dists <= (1.0 - self.appearance_thresh))
             dists = np.where(mask, np.minimum(dists, emb_dists), dists)
 
         matches, u_track, u_detection = matching.linear_assignment(dists, thresh=self.match_thresh)

@@ -60,8 +60,7 @@ class _KalmanBox:
         return cls(box)
 
     def predict(self) -> None:
-        if self.x.any():  # a zero state predicts to zero forever
-            self.x = self._MOTION @ self.x
+        self.x = self._MOTION @ self.x
         self.P = self._MOTION @ self.P @ self._MOTION.T + self._Q
 
     def predict_box(self) -> list:
@@ -126,7 +125,7 @@ class GreedyIoUTracker(CustomTrackerBase):
                 self.tracks[k]["kind"] = "removed"
         self.tracks = {k: v for k, v in self.tracks.items() if v["kind"] != "removed"}
 
-        for k, t in sorted(self.tracks.items(), key=lambda kv: -kv[1]["age"]):
+        for k, t in sorted(self.tracks.items(), key=lambda kv: (kv[1]["age"], -kv[1].get("score", 0.0))):
             if t["kind"] != "active" and not self.keep_last:
                 continue
             if not remaining:

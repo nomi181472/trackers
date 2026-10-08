@@ -74,6 +74,8 @@ class UltralyticsEngine(Engine):
     """
 
     def __init__(self, tracker_id: str, params: dict, fps: int, device: str = "cpu"):
+        from app.core.trackers_standalone.basetrack import BaseTrack
+        BaseTrack.reset_id()
         self._tracker_cls = TRACKER_MAP[tracker_id]
         cfg = SimpleNamespace(**params)
         cfg.device = device

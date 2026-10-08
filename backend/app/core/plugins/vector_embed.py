@@ -166,8 +166,9 @@ class VectorEmbedderEngine(Engine):
             for r, c in zip(row_ind, col_ind):
                 tid = track_ids[r]
                 cost = cost_matrix[r, c]
-                # Reject match if cost is too high (gated)
-                if cost > 1.8:
+                # Reject match if cost is too high (gated by distance and IoU threshold)
+                max_cost = (1.0 - self.embed_weight) * (1.0 - self.iou_thresh) + self.embed_weight * max(self.dist_thresh, 1.8)
+                if cost > max_cost:
                     continue
 
                 tr = self.tracks[tid]
@@ -176,7 +177,7 @@ class VectorEmbedderEngine(Engine):
                 det_cls = dets[c, 5] if dets.shape[1] > 5 else 0
 
                 tr["kf"].update(det_box)
-                tr["box"] = list(det_box)
+                tr["box"] = tr["kf"].predict_box()
                 tr["score"] = float(det_score)
                 tr["cls"] = int(det_cls)
                 tr["hits"] += 1
