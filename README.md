@@ -211,8 +211,7 @@ npm run dev -- -p 3000
 | `POST` | `/api/scenarios/preview` | Generate synthetic scenario and stream preview video |
 | `POST` | `/api/simulations` | Dispatch asynchronous multi-tracker simulation job |
 | `GET` | `/api/jobs/{id}` | Poll simulation job status and fetch complete report results |
-| `POST` | `/api/real/upload` | Upload MP4 video clip for real-world tracking |
-| `POST` | `/api/real/jobs` | Run YOLO detector + tracker pipeline on uploaded video |
+| `POST / DELETE` | `/api/cleanup` | Purge generated job videos (*.mp4, *.jpg) & scenario previews on demand |
 | `GET` | `/api/media/{file}` | Serves H.264 video exports and event thumbnails |
 
 ---
