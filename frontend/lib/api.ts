@@ -1,14 +1,40 @@
 import type { Catalog, JobStatus, ParamValues, ScenarioMeta, SimulationResult } from "./types";
 
-export const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+/**
+ * Resolves the API base URL dynamically at runtime:
+ * 1. In Vercel server functions/SSR: reads internal service binding `BACKEND_URL`.
+ * 2. In browser client: uses relative URL "" (routed to backend via Vercel rewrites),
+ *    or NEXT_PUBLIC_API_URL if explicitly specified.
+ * 3. Local fallback: http://localhost:8000.
+ */
+export function getApiBase(): string {
+  if (typeof window === "undefined" && process.env.BACKEND_URL) {
+    return process.env.BACKEND_URL.replace(/\/$/, "");
+  }
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, "");
+  }
+  if (typeof window !== "undefined") {
+    return "";
+  }
+  return "http://localhost:8000";
+}
+
+export const API = process.env.NEXT_PUBLIC_API_URL || "";
 
 export function mediaUrl(p: string | null | undefined): string {
   if (!p) return "";
-  return p.startsWith("http://") || p.startsWith("https://") ? p : `${API}${p}`;
+  if (p.startsWith("http://") || p.startsWith("https://")) return p;
+  const base = getApiBase();
+  const normalizedPath = p.startsWith("/") ? p : `/${p}`;
+  return base ? `${base}${normalizedPath}` : normalizedPath;
 }
 
 async function http<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API}${path}`, {
+  const base = getApiBase();
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  const url = base ? `${base}${normalizedPath}` : normalizedPath;
+  const res = await fetch(url, {
     headers: { "Content-Type": "application/json" },
     ...init,
   });
@@ -46,9 +72,11 @@ export function getJob(jobId: string): Promise<JobStatus> {
 }
 
 export async function uploadVideo(file: File): Promise<{ upload_id: string; size: number }> {
+  const base = getApiBase();
+  const url = base ? `${base}/api/real/upload` : `/api/real/upload`;
   const form = new FormData();
   form.append("file", file);
-  const res = await fetch(`${API}/api/real/upload`, { method: "POST", body: form });
+  const res = await fetch(url, { method: "POST", body: form });
   if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || "upload failed");
   return res.json();
 }
