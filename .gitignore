@@ -16,7 +16,6 @@ __pycache__/
 # Ignore MP4 files
 *.mp4
 .kilo/
-backend/data/logs/app.log
-backend/data/logs/app_2026-10-07.log
+backend/data/
 hf
 hf.pub
