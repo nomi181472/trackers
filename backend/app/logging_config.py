@@ -1,7 +1,7 @@
 """Logging and exception tracing configuration for Tracker Failure Simulator.
 
-Designed for Docker containers on environments like Hugging Face Spaces:
-- Logs to STDOUT (captured natively by Hugging Face's Spaces Log viewer).
+Designed for standard Docker and cloud environments:
+- Logs to STDOUT for native container log viewer capture.
 - Also logs to a rotating file in data/logs/app.log for container-local diagnostics.
 - Integrates contextvars so HTTP request IDs and Job IDs are injected automatically into log lines.
 - Registers global uncaught exception handlers for main thread and worker threads.

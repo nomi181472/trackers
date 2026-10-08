@@ -28,7 +28,7 @@ echo -e "${BOLD}${CYAN}================================================${NC}"
 echo -e "${BOLD}${CYAN}      Tracker Failure Simulator Runner          ${NC}"
 echo -e "${BOLD}${CYAN}================================================${NC}"
 
-# Helper function to release/kill any process occupying a specified TCP port
+# Helper function to check and safely release port if occupied by simulator processes
 free_port() {
     local port="$1"
     local name="$2"
@@ -47,30 +47,36 @@ free_port() {
     fi
 
     if [ -n "$pids" ]; then
-        echo -e "${YELLOW}[Port $port ($name)] Closing existing process occupying port (PID: $pids)...${NC}"
-        # Graceful SIGTERM
         for pid in $pids; do
             if [ -n "$pid" ] && [ "$pid" -gt 1 ] && [ "$pid" -ne "$$" ]; then
-                kill -15 "$pid" 2>/dev/null || true
+                local cmdline=""
+                if [ -r "/proc/$pid/cmdline" ]; then
+                    cmdline=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)
+                elif command -v ps &>/dev/null; then
+                    cmdline=$(ps -p "$pid" -o args= 2>/dev/null || true)
+                fi
+
+                # Check if process belongs to our stack (uvicorn, python app, next, node)
+                if echo "$cmdline" | grep -qiE "uvicorn|fastapi|trackers|next|node.*server|node.*3000"; then
+                    echo -e "${YELLOW}[Port $port ($name)] Stopping previous simulator process (PID: $pid: $cmdline)...${NC}"
+                    kill -15 "$pid" 2>/dev/null || true
+                    sleep 0.5
+                    if kill -0 "$pid" 2>/dev/null; then
+                        kill -9 "$pid" 2>/dev/null || true
+                    fi
+                else
+                    echo -e "${RED}[Port $port ($name)] Port is occupied by PID $pid ($cmdline).${NC}"
+                    echo -e "${RED}Skipping automatic kill to prevent terminating unrelated system processes.${NC}"
+                    echo -e "${RED}Please free port $port manually or specify a different port (e.g. BACKEND_PORT=8001 / FRONTEND_PORT=3001).${NC}"
+                    exit 1
+                fi
             fi
         done
-        sleep 0.5
-        # Force SIGKILL if still running
-        for pid in $pids; do
-            if [ -n "$pid" ] && [ "$pid" -gt 1 ] && [ "$pid" -ne "$$" ] && kill -0 "$pid" 2>/dev/null; then
-                kill -9 "$pid" 2>/dev/null || true
-            fi
-        done
-        # Fallback to fuser -k
-        if command -v fuser &>/dev/null; then
-            fuser -k -9 "${port}/tcp" 2>/dev/null || true
-        fi
-        sleep 0.3
-        echo -e "${GREEN}[Port $port ($name)] Port released successfully.${NC}"
+        echo -e "${GREEN}[Port $port ($name)] Port verified.${NC}"
     fi
 }
 
-# 1. Free ports if already occupied
+# 1. Check and free ports safely
 free_port "$BACKEND_PORT" "Backend"
 free_port "$FRONTEND_PORT" "Frontend"
 
