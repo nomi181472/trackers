@@ -65,18 +65,29 @@ class SimDetector:
 
 
 def write_video(frames, path: str, fps: int):
-    """Best-effort H.264 writer (avc1 -> ffmpeg transcode -> mp4v fallback)."""
+    """Best-effort H.264 writer (avc1 -> ffmpeg transcode -> mp4v fallback).
+    Accepts lists or generators to stream frames without high RAM overhead.
+    """
     import cv2
+    import gc
+    frames_iter = iter(frames)
+    try:
+        first_frame = next(frames_iter)
+    except StopIteration:
+        return "empty"
+
+    h, w = first_frame.shape[0], first_frame.shape[1]
     video = None
     started = None
     for fc in ("avc1", "avc3", "mp4v", "XVID"):
-        v = cv2.VideoWriter(path, cv2.VideoWriter_fourcc(*fc), fps, (frames[0].shape[1], frames[0].shape[0]))
+        v = cv2.VideoWriter(path, cv2.VideoWriter_fourcc(*fc), fps, (w, h))
         if v.isOpened():
             video, started = v, fc
             break
     if video is None:
         raise RuntimeError("No working video codec available")
-    for f in frames:
+    video.write(first_frame)
+    for f in frames_iter:
         video.write(f)
     video.release()
     try:
@@ -94,6 +105,7 @@ def write_video(frames, path: str, fps: int):
                 started = "avc1(ffmpeg)"
     except Exception:  # noqa: BLE001
         pass
+    gc.collect()
     return str(started)
 
 
@@ -111,10 +123,15 @@ def render_event_thumb(scenario, t: int, tracks, event_text: str, out_path: str,
 def _attach_preview(scenario, job_id: str):
     """Write a plain scenario preview clip and expose it on scenario.meta."""
     from app import config
+    import gc
     preview_path = config.SCENARIOS_DIR / f"{job_id}_preview.mp4"
-    codec = write_video(scenario.frames, str(preview_path), scenario.fps)
+    def _preview_gen():
+        for t in range(scenario.meta["frames"]):
+            yield scenario.render_annotated_frame(t, tracks=[], draw_gt=True)
+    codec = write_video(_preview_gen(), str(preview_path), scenario.fps)
     scenario.meta["preview_url"] = f"/api/media/{preview_path.name}"
     scenario.meta["preview_codec"] = codec
+    gc.collect()
     return scenario.meta["preview_url"]
 
 
@@ -205,14 +222,14 @@ def run_simulation(scenario, specs: list[dict], detection_params: dict,
         report = explain(scenario.meta, tid, eval_res.metrics, [e.to_dict() for e in eval_res.events])
 
         # ---- render annotated video ---- #
-        annotated = []
-        for t in range(T):
-            annotated.append(scenario.render_annotated_frame(t, track_frames[t], draw_gt=True,
-                                                             labels=True,
-                                                             tracker_name=meta["name"]))
         vid_name = f"{job_id}_{tid}.mp4"
         vid_path = os.path.join(out_dir, vid_name)
-        codec = write_video(annotated, vid_path, scenario.fps)
+        def _annotated_gen():
+            for t in range(T):
+                yield scenario.render_annotated_frame(t, track_frames[t], draw_gt=True,
+                                                      labels=True,
+                                                      tracker_name=meta["name"])
+        codec = write_video(_annotated_gen(), vid_path, scenario.fps)
 
         # ---- event thumbnails ---- #
         thumbs = []

@@ -45,6 +45,7 @@ def list_trackers():
 @router.post("/scenarios/preview")
 def scenario_preview(payload: dict):
     """Build a scenario and render a preview clip with ground-truth overlay."""
+    import gc
     params = {**payload}
     params.setdefault("seed", 7)
     try:
@@ -52,13 +53,16 @@ def scenario_preview(payload: dict):
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=f"Bad scenario: {e}") from e
     jid = config.new_id()
-    frames = [sc.render_annotated_frame(t, tracks=[], draw_gt=True) for t in range(sc.meta["frames"])]
     path = config.SCENARIOS_DIR / f"{jid}_preview.mp4"
     sc.meta["preview_url"] = f"/api/media/{path.name}"
+    def _preview_frames():
+        for t in range(sc.meta["frames"]):
+            yield sc.render_annotated_frame(t, tracks=[], draw_gt=True)
     try:
-        sc.meta["preview_codec"] = write_video(frames, str(path), sc.fps)
+        sc.meta["preview_codec"] = write_video(_preview_frames(), str(path), sc.fps)
     except Exception as e:  # noqa: BLE001
         sc.meta["preview_warning"] = str(e)
+    gc.collect()
     return {"scenario_id": jid, "meta": sc.meta}
 
 
