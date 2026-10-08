@@ -63,7 +63,7 @@ export function startSimulation(payload: {
   scenario: ParamValues;
   detection: ParamValues;
   trackers: { tracker_id: string; params: ParamValues }[];
-}): Promise<{ job_id: string }> {
+}): Promise<{ job_id: string; worker?: string }> {
   return http("/api/simulations", { method: "POST", body: JSON.stringify(payload) });
 }
 
@@ -113,19 +113,22 @@ export async function pollUntilDone(jobId: string, onProgress: (j: JobStatus) =>
   }
 }
 
-export function getLogFiles(): Promise<{ files: import("./types").LogFileInfo[] }> {
-  return http("/api/logs/files");
+export function getLogFiles(worker?: string): Promise<{ files: import("./types").LogFileInfo[] }> {
+  const q = worker ? `?worker=${encodeURIComponent(worker)}` : "";
+  return http(`/api/logs/files${q}`);
 }
 
 export function getLogLines(params: {
   file?: string;
   cursor?: number | null;
   limit?: number;
+  worker?: string;
 }): Promise<import("./types").LogPage> {
   const q = new URLSearchParams();
   if (params.file) q.set("file", params.file);
   if (params.cursor !== undefined && params.cursor !== null) q.set("cursor", String(params.cursor));
   if (params.limit) q.set("limit", String(params.limit));
+  if (params.worker) q.set("worker", params.worker);
   const query = q.toString();
   return http(`/api/logs${query ? `?${query}` : ""}`);
 }
@@ -134,17 +137,20 @@ export function cleanupGeneratedFiles(params?: {
   include_uploads?: boolean;
   include_jobs?: boolean;
   include_scenarios?: boolean;
+  worker?: string;
 }): Promise<{
   ok: boolean;
   deleted_count: number;
   freed_bytes: number;
   freed_mb: number;
   details: Record<string, number>;
+  worker?: string;
 }> {
   const q = new URLSearchParams();
   if (params?.include_uploads) q.set("include_uploads", "true");
   if (params?.include_jobs !== undefined) q.set("include_jobs", String(params.include_jobs));
   if (params?.include_scenarios !== undefined) q.set("include_scenarios", String(params.include_scenarios));
+  if (params?.worker) q.set("worker", params.worker);
   const qs = q.toString();
   return http(`/api/cleanup${qs ? `?${qs}` : ""}`, { method: "POST" });
 }

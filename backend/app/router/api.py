@@ -181,7 +181,13 @@ def media(name: str):
         for cand in candidates:
             p = d / cand
             if p.exists():
-                media_type = "video/webm" if p.suffix == ".webm" else "video/mp4" if p.suffix == ".mp4" else None
+                media_type = (
+                    "video/webm" if p.suffix == ".webm"
+                    else "video/mp4" if p.suffix == ".mp4"
+                    else "image/png" if p.suffix == ".png"
+                    else "image/jpeg" if p.suffix in (".jpg", ".jpeg")
+                    else None
+                )
                 return FileResponse(str(p), media_type=media_type)
     raise HTTPException(status_code=404, detail="media not found")
 
@@ -283,11 +289,16 @@ def cleanup_data_files(
     """
     deleted_count = 0
     freed_bytes = 0
-    details = {"jobs_mp4": 0, "jobs_jpg": 0, "scenarios_mp4": 0, "uploads": 0}
+    details = {"jobs_mp4": 0, "jobs_jpg": 0, "jobs_png": 0, "scenarios_mp4": 0, "uploads": 0}
 
-    # 1. Clean jobs directory (webm, mp4 and jpg files)
+    # 1. Clean jobs directory (webm, mp4, jpg, and png files)
     if include_jobs and config.JOBS_DIR.exists():
-        for pattern, key in [("**/*.webm", "jobs_webm"), ("**/*.mp4", "jobs_mp4"), ("**/*.jpg", "jobs_jpg")]:
+        for pattern, key in [
+            ("**/*.webm", "jobs_webm"),
+            ("**/*.mp4", "jobs_mp4"),
+            ("**/*.jpg", "jobs_jpg"),
+            ("**/*.png", "jobs_png"),
+        ]:
             for p in config.JOBS_DIR.glob(pattern):
                 try:
                     if p.is_file():

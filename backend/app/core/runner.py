@@ -327,10 +327,91 @@ def run_simulation(scenario, specs: list[dict], detection_params: dict,
         results.append(res_item)
         tick(f"Done with {meta['name']}", 0.9 + 0.1 * (len(results) / max(1, len(specs))))
 
+    # ---- Generate and save comparison chart PNG ---- #
+    chart_name = f"{job_id}_chart.png"
+    chart_path = os.path.join(out_dir, chart_name)
+    chart_url = None
+    try:
+        _render_simulation_chart(results, chart_path)
+        chart_url = f"/api/media/{chart_name}"
+    except Exception as e:
+        scenario.meta["chart_warning"] = str(e)
+
     try:
         _attach_preview(scenario, job_id)
     except Exception as e:  # noqa: BLE001
         scenario.meta["preview_warning"] = str(e)
     tick("Finished", 1.0)
-    return dict(scenario=scenario.meta, detection=detection_params,
-                trackers=[r["tracker_id"] for r in results], results=results)
+    return dict(
+        scenario=scenario.meta,
+        detection=detection_params,
+        trackers=[r["tracker_id"] for r in results],
+        results=results,
+        chart_url=chart_url,
+    )
+
+
+def _render_simulation_chart(results: list[dict], out_path: str):
+    """Renders a high-res comparison chart (Trade-off & Errors) and saves as PNG."""
+    if not results:
+        return
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 5), facecolor="#0f172a")
+
+    # Colors for trackers
+    palette = ["#38bdf8", "#818cf8", "#34d399", "#fbbf24", "#f87171", "#e879f9", "#2dd4bf"]
+
+    # 1. Left Subplot: Latency vs MOTA trade-off
+    ax1.set_facecolor("#1e293b")
+    ax1.grid(True, linestyle="--", alpha=0.25, color="#64748b")
+    ax1.set_title("Speed vs Accuracy Trade-off", color="#f8fafc", fontsize=12, fontweight="bold", pad=12)
+    ax1.set_xlabel("Latency (ms / frame) — Lower is Faster", color="#94a3b8", fontsize=10, labelpad=8)
+    ax1.set_ylabel("MOTA (%) — Higher is Better", color="#94a3b8", fontsize=10, labelpad=8)
+    ax1.tick_params(colors="#94a3b8")
+
+    # Sweet spot highlight box (top-left)
+    ax1.axhspan(50, 100, xmin=0, xmax=0.5, color="#34d399", alpha=0.07)
+
+    for idx, r in enumerate(results):
+        m = r.get("metrics", {})
+        mota = (m.get("mota", 0.0) or 0.0) * 100
+        latency = m.get("avg_time_ms", 1.0) or 1.0
+        color = palette[idx % len(palette)]
+        total_err = (m.get("fp", 0) or 0) + (m.get("fn", 0) or 0) + (m.get("idsw", 0) or 0)
+        bubble_size = max(80, min(800, 120 + total_err * 20))
+
+        ax1.scatter(latency, mota, s=bubble_size, color=color, alpha=0.75, edgecolors="#ffffff", linewidth=1.5, label=r["name"])
+        ax1.annotate(r["name"], (latency, mota), textcoords="offset points", xytext=(0, 10),
+                     ha="center", color="#f8fafc", fontsize=9, fontweight="bold")
+
+    ax1.set_ylim(-10, 105)
+
+    # 2. Right Subplot: Error Breakdown (FP, FN, ID Switches)
+    ax2.set_facecolor("#1e293b")
+    ax2.grid(True, linestyle="--", alpha=0.25, color="#64748b", axis="y")
+    ax2.set_title("Tracking Error Breakdown", color="#f8fafc", fontsize=12, fontweight="bold", pad=12)
+    ax2.set_ylabel("Total Occurrences", color="#94a3b8", fontsize=10, labelpad=8)
+    ax2.tick_params(colors="#94a3b8")
+
+    names = [r["name"] for r in results]
+    fps = [r.get("metrics", {}).get("fp", 0) or 0 for r in results]
+    fns = [r.get("metrics", {}).get("fn", 0) or 0 for r in results]
+    idsws = [r.get("metrics", {}).get("idsw", 0) or 0 for r in results]
+
+    x = np.arange(len(names))
+    width = 0.25
+
+    ax2.bar(x - width, fps, width, label="False Positives (FP)", color="#f87171", alpha=0.85)
+    ax2.bar(x, fns, width, label="Missed Frames (FN)", color="#fbbf24", alpha=0.85)
+    ax2.bar(x + width, idsws, width, label="ID Switches", color="#38bdf8", alpha=0.85)
+
+    ax2.set_xticks(x)
+    ax2.set_xticklabels(names, color="#f8fafc", fontsize=9.5, rotation=15, ha="right")
+    ax2.legend(loc="upper right", facecolor="#0f172a", edgecolor="#334155", labelcolor="#cbd5e1", fontsize=8.5)
+
+    plt.tight_layout()
+    fig.savefig(out_path, dpi=180, facecolor=fig.get_facecolor(), bbox_inches="tight")
+    plt.close(fig)

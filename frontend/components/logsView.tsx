@@ -5,6 +5,7 @@ import type { LogFileInfo, LogPage } from "@/lib/types";
 import { getLogFiles, getLogLines } from "@/lib/api";
 
 export function LogsView() {
+  const [selectedWorker, setSelectedWorker] = useState<string>("worker-n");
   const [files, setFiles] = useState<LogFileInfo[]>([]);
   const [selectedFile, setSelectedFile] = useState<string>("");
   const [lines, setLines] = useState<string[]>([]);
@@ -20,18 +21,25 @@ export function LogsView() {
   const bottomAnchorRef = useRef<HTMLDivElement>(null);
   const prevScrollHeightRef = useRef<number>(0);
 
-  // Load available files on mount
+  // Load available files on mount or worker change
   const fetchFiles = useCallback(async () => {
     try {
-      const res = await getLogFiles();
+      setError(null);
+      const res = await getLogFiles(selectedWorker);
       setFiles(res.files);
-      if (res.files.length > 0 && !selectedFile) {
+      if (res.files.length > 0) {
         setSelectedFile(res.files[0].filename);
+      } else {
+        setSelectedFile("");
+        setLines([]);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+      setFiles([]);
+      setSelectedFile("");
+      setLines([]);
     }
-  }, [selectedFile]);
+  }, [selectedWorker]);
 
   useEffect(() => {
     fetchFiles();
@@ -43,7 +51,7 @@ export function LogsView() {
     setLoading(true);
     setError(null);
     try {
-      const data: LogPage = await getLogLines({ file: filename, limit: 100 });
+      const data: LogPage = await getLogLines({ file: filename, limit: 100, worker: selectedWorker });
       setLines(data.lines);
       setNextCursor(data.next_cursor);
       setTotalLines(data.total_lines);
@@ -52,7 +60,7 @@ export function LogsView() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [selectedWorker]);
 
   useEffect(() => {
     if (selectedFile) {
@@ -65,12 +73,10 @@ export function LogsView() {
     if (!autoRefresh || !selectedFile) return;
     const interval = setInterval(async () => {
       try {
-        const data: LogPage = await getLogLines({ file: selectedFile, limit: 100 });
+        const data: LogPage = await getLogLines({ file: selectedFile, limit: 100, worker: selectedWorker });
         setTotalLines(data.total_lines);
-        // Only refresh bottom chunk if not actively inspecting paginated older history
         setLines((prev) => {
           if (data.lines.length === 0) return prev;
-          // If we have loaded older lines, keep them and update the tail
           if (prev.length <= 100) {
             return data.lines;
           }
@@ -81,7 +87,7 @@ export function LogsView() {
       }
     }, 4000);
     return () => clearInterval(interval);
-  }, [autoRefresh, selectedFile]);
+  }, [autoRefresh, selectedFile, selectedWorker]);
 
   // Load older lines when user scrolls to top/bottom
   const loadOlderLogs = async () => {
@@ -97,6 +103,7 @@ export function LogsView() {
         file: selectedFile,
         cursor: nextCursor,
         limit: 100,
+        worker: selectedWorker,
       });
 
       setLines((prev) => [...data.lines, ...prev]);
@@ -149,6 +156,28 @@ export function LogsView() {
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          {/* Worker Selector Dropdown */}
+          <div style={{ minWidth: 130 }}>
+            <select
+              value={selectedWorker}
+              onChange={(e) => setSelectedWorker(e.target.value)}
+              disabled={loading}
+              style={{
+                padding: "6px 10px",
+                fontSize: 12.5,
+                fontWeight: 600,
+                borderColor: "var(--accent)",
+                color: "var(--text)",
+                background: "var(--bg-2)",
+              }}
+              title="Select which worker node to inspect logs from"
+            >
+              <option value="worker-n">⚡ worker-n</option>
+              <option value="worker-r">🔄 worker-r</option>
+              <option value="worker-v">💻 worker-v</option>
+            </select>
+          </div>
+
           {/* Daily log file dropdown */}
           <div style={{ minWidth: 200 }}>
             <select

@@ -140,6 +140,7 @@ export interface SimulationResult {
   detection: Record<string, number | boolean | string>;
   trackers: string[];
   results: TrackerResult[];
+  chart_url?: string;
 }
 
 export interface JobStatus {

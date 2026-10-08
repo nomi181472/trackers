@@ -134,6 +134,7 @@ trap cleanup EXIT INT TERM
 echo -e "${GREEN}[Backend]  Starting uvicorn on http://${BACKEND_HOST}:${BACKEND_PORT}...${NC}"
 (
     cd "$BACKEND_DIR"
+    export DATA_DIR="${DATA_DIR:-$BACKEND_DIR/data}"
     exec "$PYTHON_BIN" -m uvicorn app.main:app --host "$BACKEND_HOST" --port "$BACKEND_PORT" --reload
 ) &
 BACKEND_PID=$!
@@ -142,7 +143,9 @@ BACKEND_PID=$!
 echo -e "${GREEN}[Frontend] Starting Next.js on http://localhost:${FRONTEND_PORT}...${NC}"
 (
     cd "$FRONTEND_DIR"
-    export NEXT_PUBLIC_API_URL="${NEXT_PUBLIC_API_URL:-http://localhost:${BACKEND_PORT}}"
+    export BACKEND_URL="${BACKEND_URL:-http://127.0.0.1:${BACKEND_PORT}}"
+    export WORKER_V_URL="${WORKER_V_URL:-http://127.0.0.1:${BACKEND_PORT}}"
+    export NEXT_PUBLIC_API_URL=""
     exec npx next dev -p "$FRONTEND_PORT"
 ) &
 FRONTEND_PID=$!

@@ -120,6 +120,7 @@ export default function Home() {
   const [clearing, setClearing] = useState<boolean>(false);
   const [clearStatus, setClearStatus] = useState<string | null>(null);
   const [clearError, setClearError] = useState<string | null>(null);
+  const [selectedClearWorker, setSelectedClearWorker] = useState<string>("all");
 
   useEffect(() => {
     const savedTheme = (localStorage.getItem("tracker_theme") as "dark" | "light" | "midnight") || "dark";
@@ -147,10 +148,12 @@ export default function Home() {
         include_jobs: true,
         include_scenarios: true,
         include_uploads: true,
+        worker: selectedClearWorker,
       });
       setShowClearModal(false);
+      const workerLabel = selectedClearWorker === "all" ? "all workers" : selectedClearWorker;
       setClearStatus(
-        `Successfully cleared ${res.deleted_count} files (${res.freed_mb} MB freed).`
+        `Successfully cleared ${res.deleted_count} files (${res.freed_mb} MB freed) on ${workerLabel}.`
       );
       setTimeout(() => setClearStatus(null), 5000);
     } catch (e) {
@@ -289,11 +292,36 @@ export default function Home() {
               <p style={{ margin: "0 0 12px", color: "var(--text)", lineHeight: 1.5 }}>
                 Are you sure you want to delete and purge all generated simulation records?
               </p>
-              <div style={{ background: "var(--bg-3)", padding: "12px", borderRadius: "8px", fontSize: "12.5px", color: "var(--muted)", border: "1px solid var(--line)" }}>
+              <div style={{ background: "var(--bg-3)", padding: "12px", borderRadius: "8px", fontSize: "12.5px", color: "var(--muted)", border: "1px solid var(--line)", marginBottom: "14px" }}>
                 <div>• All benchmark simulation video clips (<span className="mono">*.mp4</span>)</div>
                 <div>• All failure event frame thumbnails (<span className="mono">*.jpg</span>)</div>
                 <div>• All synthetic scenario preview videos</div>
                 <div>• Any temporary video uploads</div>
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                <label style={{ fontSize: "12px", fontWeight: 600, color: "var(--text)" }}>
+                  Target Worker Node:
+                </label>
+                <select
+                  value={selectedClearWorker}
+                  onChange={(e) => setSelectedClearWorker(e.target.value)}
+                  disabled={clearing}
+                  style={{
+                    padding: "8px 10px",
+                    borderRadius: "6px",
+                    background: "var(--bg-2)",
+                    border: "1px solid var(--line)",
+                    color: "var(--text)",
+                    fontSize: "13px",
+                    fontWeight: 600,
+                  }}
+                >
+                  <option value="all">🌐 All Workers (worker-n, worker-r, worker-v)</option>
+                  <option value="worker-n">⚡ worker-n</option>
+                  <option value="worker-r">🔄 worker-r</option>
+                  <option value="worker-v">💻 worker-v</option>
+                </select>
               </div>
               {clearError ? (
                 <div className="err" style={{ marginTop: "12px" }}>
@@ -345,6 +373,7 @@ function SimulatorWorkspace({ catalog, mode }: { catalog: Catalog; mode: "standa
   const [selected, setSelected] = useState<Record<string, ParamValues | null>>({});
   const [preview, setPreview] = useState<ScenarioMeta | null>(null);
   const [running, setRunning] = useState<JobStatus | null>(null);
+  const [activeWorker, setActiveWorker] = useState<string | null>(null);
   const [result, setResult] = useState<SimulationResult | null>(null);
   const [history, setHistory] = useState<SimulationResult[]>([]);
   const [err, setErr] = useState<string | null>(null);
@@ -397,6 +426,7 @@ function SimulatorWorkspace({ catalog, mode }: { catalog: Catalog; mode: "standa
   const run = async () => {
     setErr(null);
     setResult(null);
+    setActiveWorker(null);
     const chosen = catalog.trackers.filter((t) => selected[t.id]);
     if (!chosen.length) return setErr("Select at least one tracker to simulate.");
     const unavailable = chosen.filter((t) => !t.available);
@@ -407,18 +437,26 @@ function SimulatorWorkspace({ catalog, mode }: { catalog: Catalog; mode: "standa
     }
 
     try {
-      const { job_id } = await startSimulation({
+      const { job_id, worker } = await startSimulation({
         scenario,
         detection,
         trackers: chosen.map((t) => ({ tracker_id: t.id, params: selected[t.id] || {} })),
       });
+      if (worker) {
+        setActiveWorker(worker);
+      }
       const job = await pollUntilDone(job_id, setRunning);
       if (job.status === "error") throw new Error(job.error || "Simulation job encountered an error.");
       const res = job.result as SimulationResult;
       setResult(res);
       setHistory((h) => [res, ...h].slice(0, 4));
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg.includes("429") || msg.toLowerCase().includes("too many candidates")) {
+        setErr("⚠️ Too many candidates, please wait. It is running on free version.");
+      } else {
+        setErr(msg);
+      }
     }
     setRunning(null);
   };
@@ -707,6 +745,26 @@ function SimulatorWorkspace({ catalog, mode }: { catalog: Catalog; mode: "standa
 
         {running ? (
           <div style={{ marginTop: 12 }}>
+            {activeWorker ? (
+              <div
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  padding: "4px 10px",
+                  borderRadius: "6px",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  color: "#93c5fd",
+                  background: "rgba(59, 130, 246, 0.15)",
+                  border: "1px solid rgba(59, 130, 246, 0.3)",
+                  marginBottom: "8px",
+                }}
+              >
+                <span>⚡</span>
+                <span>Forwarding request to {activeWorker}</span>
+              </div>
+            ) : null}
             <div className="progress">
               <div style={{ width: `${Math.round((running.progress || 0) * 100)}%` }} />
             </div>

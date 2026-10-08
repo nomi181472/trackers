@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { mediaUrl } from "@/lib/api";
 import type { RealResult, SimulationResult, TrackerResult } from "@/lib/types";
 
@@ -36,7 +36,7 @@ export function ResultsView({ result }: { result: SimulationResult }) {
       </div>
 
       {result.results.length > 0 ? (
-        <MultiTrackerComparisonChart results={result.results} />
+        <MultiTrackerComparisonChart results={result.results} chartUrl={result.chart_url} />
       ) : null}
     </div>
   );
@@ -231,10 +231,18 @@ const TRACKER_COLORS = [
   "#818cf8", // Indigo
 ];
 
-function MultiTrackerComparisonChart({ results }: { results: TrackerResult[] }) {
+function MultiTrackerComparisonChart({
+  results,
+  chartUrl,
+}: {
+  results: TrackerResult[];
+  chartUrl?: string;
+}) {
   const [metricTab, setMetricTab] = useState<"tradeoff" | "errors" | "rates" | "latency">("tradeoff");
   const [activeTracker, setActiveTracker] = useState<string | null>(null);
   const [useLogScale, setUseLogScale] = useState<boolean>(true);
+  const [exportingPng, setExportingPng] = useState<boolean>(false);
+  const svgRef = useRef<SVGSVGElement>(null);
 
   // Trackers with errors, rates, and latency to compare
   const items = results.map((r, i) => {
@@ -267,8 +275,60 @@ function MultiTrackerComparisonChart({ results }: { results: TrackerResult[] }) 
   const padTop = 30;
   const padBottom = 48;
 
+  const downloadChartPng = () => {
+    if (chartUrl) {
+      // Directly download the server-rendered high-res PNG
+      const a = document.createElement("a");
+      a.href = mediaUrl(chartUrl);
+      a.download = "simulation-chart.png";
+      a.target = "_blank";
+      a.click();
+      return;
+    }
+
+    const svgEl = svgRef.current;
+    if (!svgEl) return;
+    setExportingPng(true);
+
+    try {
+      const serializer = new XMLSerializer();
+      const svgStr = serializer.serializeToString(svgEl);
+      const blob = new Blob([svgStr], { type: "image/svg+xml;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const img = new Image();
+
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const scale = 2; // high resolution retina
+        canvas.width = plotWidth * scale;
+        canvas.height = plotHeight * scale;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+
+        ctx.fillStyle = "#0f172a";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        URL.revokeObjectURL(url);
+
+        const pngUrl = canvas.toDataURL("image/png");
+        const a = document.createElement("a");
+        a.download = `tracker-comparison-chart.png`;
+        a.href = pngUrl;
+        a.click();
+        setExportingPng(false);
+      };
+
+      img.onerror = () => {
+        setExportingPng(false);
+      };
+
+      img.src = url;
+    } catch {
+      setExportingPng(false);
+    }
+  };
+
   // Log vs linear coordinate mapping for latency (X-axis)
-  // When one tracker is 45ms and others are 0.1ms - 4ms, log scale spreads them evenly!
   const minValLog = 0.05;
   const getNormX = (val: number) => {
     if (!useLogScale) {
@@ -285,7 +345,27 @@ function MultiTrackerComparisonChart({ results }: { results: TrackerResult[] }) 
   return (
     <div className="panel" style={{ marginTop: 18 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
-        <h3 style={{ margin: 0 }}>📊 Multi-Tracker Comparison Chart</h3>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <h3 style={{ margin: 0 }}>📊 Multi-Tracker Comparison Chart</h3>
+          <button
+            type="button"
+            className="btn ghost"
+            style={{
+              padding: "4px 10px",
+              fontSize: 11.5,
+              fontWeight: 600,
+              color: "#38bdf8",
+              borderColor: "rgba(56, 189, 248, 0.3)",
+              background: "rgba(56, 189, 248, 0.08)",
+            }}
+            onClick={downloadChartPng}
+            disabled={exportingPng}
+            title="Download high-resolution comparison chart as PNG"
+          >
+            {exportingPng ? "Exporting…" : "📸 Export Chart (PNG)"}
+          </button>
+        </div>
+
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           <button
             className={`btn ghost ${metricTab === "tradeoff" ? "active" : ""}`}
@@ -343,7 +423,11 @@ function MultiTrackerComparisonChart({ results }: { results: TrackerResult[] }) 
           </div>
 
           <div style={{ background: "var(--bg-3)", border: "1px solid var(--line)", borderRadius: 8, padding: "14px", position: "relative" }}>
-            <svg viewBox={`0 0 ${plotWidth} ${plotHeight}`} style={{ width: "100%", height: "auto", display: "block", overflow: "visible" }}>
+            <svg
+              ref={svgRef}
+              viewBox={`0 0 ${plotWidth} ${plotHeight}`}
+              style={{ width: "100%", height: "auto", display: "block", overflow: "visible" }}
+            >
               {/* Optimal quadrant (High Accuracy + Low Latency = Top Left) */}
               <rect
                 x={padLeft}
