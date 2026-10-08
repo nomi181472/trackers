@@ -92,10 +92,23 @@ export function startRealJob(payload: {
 
 export async function pollUntilDone(jobId: string, onProgress: (j: JobStatus) => void) {
   let j: JobStatus;
+  let notFoundRetries = 0;
   for (;;) {
-    j = await getJob(jobId);
-    onProgress(j);
-    if (j.status === "done" || j.status === "error") return j;
+    try {
+      j = await getJob(jobId);
+      notFoundRetries = 0;
+      onProgress(j);
+      if (j.status === "done" || j.status === "error") return j;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // If serverless container just spun up or hasn't synced the job file yet, retry up to 6 times (6 * 800ms ~ 5s)
+      if (msg.includes("404") && notFoundRetries < 6) {
+        notFoundRetries++;
+        await new Promise((r) => setTimeout(r, 800));
+        continue;
+      }
+      throw err;
+    }
     await new Promise((r) => setTimeout(r, 700));
   }
 }
