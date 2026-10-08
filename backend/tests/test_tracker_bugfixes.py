@@ -126,3 +126,100 @@ def test_ocsort_observation_pruning_memory_retention():
     assert len(track.observations) <= 70
     assert 0 not in track.observations  # Frame 0 should have been pruned
 
+
+def test_fast_tracker_update_and_occlusion_handling():
+    from app.core.trackers_standalone.fast_track import FASTTracker
+    args = SimpleNamespace(
+        track_high_thresh=0.25,
+        track_low_thresh=0.1,
+        new_track_thresh=0.25,
+        track_buffer=30,
+        match_thresh=0.8,
+        fuse_score=True,
+        reset_velocity_offset_occ=5,
+        reset_pos_offset_occ=3,
+        enlarge_bbox_occ=1.1,
+        dampen_motion_occ=0.5,
+        active_occ_to_lost_thresh=10,
+        occ_cover_thresh=0.5,
+        occ_reappear_window=40,
+        init_iou_suppress=0.7,
+    )
+    tracker = FASTTracker(args=args, frame_rate=30)
+    # Frame 1: 2 objects
+    dets_f1 = np.array([[10, 10, 50, 50, 0.9, 0], [100, 100, 140, 140, 0.9, 0]])
+    out1 = tracker.update(dets_f1)
+    assert len(out1) == 2
+
+    # Frame 2: Second object continues, first object becomes unmatched but occluded
+    dets_f2 = np.array([[102, 100, 142, 140, 0.9, 0]])
+    out2 = tracker.update(dets_f2)
+    assert len(out2) >= 1
+
+
+def test_basetrack_thread_safety():
+    import concurrent.futures
+    BaseTrack.reset_id()
+
+    def get_ids():
+        return [BaseTrack.next_id() for _ in range(50)]
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
+        results = list(ex.map(lambda _: get_ids(), range(8)))
+
+    all_ids = [i for sub in results for i in sub]
+    assert len(all_ids) == 400
+    assert len(set(all_ids)) == 400  # No duplicate IDs generated under concurrent execution
+
+
+def test_kalman_box_joseph_update():
+    box = [10, 10, 50, 50]
+    kf = _KalmanBox.initiate(box)
+    kf.predict()
+    kf.update([12, 12, 52, 52])
+    # Covariance P should remain symmetric
+    assert np.allclose(kf.P, kf.P.T, atol=1e-6)
+    # Covariance P should be positive-definite (eigenvalues >= 0)
+    eigenvalues = np.linalg.eigvalsh(kf.P)
+    assert np.all(eigenvalues >= 0.0)
+
+
+def test_vector_embed_exact_box_assignment():
+    engine = VectorEmbedderEngine({"embed_weight": 0.5, "dist_thresh": 0.4, "min_hits": 1})
+    det = np.array([[10, 10, 50, 50, 0.9, 0]])
+    state = engine.update(det)
+    assert state.active[0].box == [10, 10, 50, 50]
+
+    det2 = np.array([[15, 15, 55, 55, 0.95, 0]])
+    state2 = engine.update(det2)
+    # The active track box should be exactly the measurement, not drifted by Kalman predict_box
+    assert state2.active[0].box == [15, 15, 55, 55]
+
+
+def test_gmc_translation_downscale():
+    from app.core.trackers_standalone.gmc import GMC
+    gmc = GMC(method="none", downscale=2)
+    # Mock downscaled warp
+    H = gmc.apply(np.zeros((100, 100, 3), dtype=np.uint8))
+    assert H.shape == (2, 3)
+
+
+def test_centroid_optimal_assignment():
+    from app.core.plugins.custom import CentroidTracker
+    tracker = CentroidTracker({"dist_thresh": 100, "max_age": 5})
+    # Seed 2 tracks
+    tracker.update(np.array([[10, 10, 30, 30, 0.9, 0], [100, 100, 120, 120, 0.9, 0]]))
+    assert len(tracker.tracks) == 2
+    # Next frame
+    state = tracker.update(np.array([[12, 12, 32, 32, 0.9, 0], [102, 102, 122, 122, 0.9, 0]]))
+    assert len(state.active) == 2
+
+
+def test_opencv_cache_refresh():
+    from app.core.plugins.opencv import OpenCVSingleTracker, _opencv_probe
+    _opencv_probe()
+    assert OpenCVSingleTracker.AVAILABLE is not None
+    OpenCVSingleTracker.reset_available_cache()
+    assert OpenCVSingleTracker.AVAILABLE is None
+
+

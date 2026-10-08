@@ -93,8 +93,15 @@ def embedding_distance(tracks, detections, metric: str = "cosine") -> np.ndarray
     track_feats = np.asarray([tracks[i].smooth_feat for i in valid_t], dtype=np.float64)
     det_feats = np.asarray([detections[j].curr_feat for j in valid_d], dtype=np.float64)
 
-    dot_prod = np.dot(track_feats, det_feats.T)
-    cos_dists = np.maximum(0.0, 1.0 - dot_prod)
+    track_norms = np.linalg.norm(track_feats, axis=1, keepdims=True)
+    det_norms = np.linalg.norm(det_feats, axis=1, keepdims=True)
+    track_norms = np.where(track_norms > 1e-6, track_norms, 1.0)
+    det_norms = np.where(det_norms > 1e-6, det_norms, 1.0)
+    norm_t = track_feats / track_norms
+    norm_d = det_feats / det_norms
+
+    dot_prod = np.dot(norm_t, norm_d.T)
+    cos_dists = np.clip(1.0 - dot_prod, 0.0, 2.0)
 
     for ti_idx, ti in enumerate(valid_t):
         for di_idx, di in enumerate(valid_d):

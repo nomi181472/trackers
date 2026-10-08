@@ -54,6 +54,9 @@ class GMC:
             H = np.eye(2, 3)
 
         self.prevFrame = frame.copy()
+        if self.downscale > 1 and H is not None:
+            H = H.copy()
+            H[:2, 2] *= self.downscale
         return H
 
     def _apply_sparse_opt_flow(self, frame: np.ndarray) -> np.ndarray:

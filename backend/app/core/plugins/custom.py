@@ -72,7 +72,8 @@ class _KalmanBox:
         S = self._update_mat @ self.P @ self._update_mat.T + self._R
         K = self.P @ self._update_mat.T @ np.linalg.inv(S)
         self.x = self.x + K @ y
-        self.P = (np.eye(len(self.x)) - K @ self._update_mat) @ self.P
+        I_KH = np.eye(len(self.x)) - K @ self._update_mat
+        self.P = I_KH @ self.P @ I_KH.T + K @ self._R @ K.T
 
 
 class CustomTrackerBase(Engine):
@@ -81,6 +82,7 @@ class CustomTrackerBase(Engine):
     def __init__(self, params: dict):
         self._ids = itertools.count(0)
         self.tracks: dict[int, dict] = {}
+        self._just_lost: set[int] = set()
 
     @staticmethod
     def _normalize_dets(dets):
@@ -104,7 +106,7 @@ class CustomTrackerBase(Engine):
                        cls=t["cls"], kind=t["kind"])
             if t["kind"] == "active":
                 active.append(tr)
-            elif t["age"] == 1:
+            elif tid in self._just_lost:
                 lost.append(tr)
         return TrackerState(active=active, lost_now=lost)
 
@@ -123,6 +125,7 @@ class GreedyIoUTracker(CustomTrackerBase):
         self.keep_last = bool(params.get("keep_last_pos", False))
 
     def update(self, dets, img=None):
+        self._just_lost.clear()
         dets = self._normalize_dets(dets)
         rows = [d for d in dets] if len(dets) else []
         remaining = list(range(len(rows)))
@@ -151,6 +154,7 @@ class GreedyIoUTracker(CustomTrackerBase):
                 remaining.remove(best_i)
             elif t["kind"] == "active":
                 t["kind"] = "lost"
+                self._just_lost.add(k)
         for i in remaining:
             self._fresh(rows[i][:4], rows[i][4], rows[i][5] if rows[i].shape[0] > 5 else 0)
         return self.state_from()
@@ -205,24 +209,30 @@ class SortTracker(CustomTrackerBase):
             if t["kind"] == "active":
                 active.append(Track(id=tid, box=[int(v) for v in t["box"]],
                                     score=float(t["score"]), cls=t["cls"]))
-            elif t["kind"] == "lost" and t["age"] == 1:
+            elif t["kind"] == "lost" and (tid in self._just_lost or t.get("age") == 1):
                 lost.append(Track(id=tid, box=[int(v) for v in t["box"]],
                                   score=float(t["score"]), cls=t["cls"], kind="lost"))
         return TrackerState(active=active, lost_now=lost)
 
     def update(self, dets, img=None):
+        self._just_lost.clear()
         dets = self._normalize_dets(dets)
         rows = [d for d in dets] if len(dets) else []
 
+        # Prune expired tracks and synchronize Kalman filter states
         for t in self.tracks.values():
             t["age"] += 1
             if t["age"] > self.max_age:
                 t["kind"] = "removed"
-        for tid in [k for k, v in self.tracks.items() if v["kind"] == "removed"]:
+        removed_ids = [k for k, v in self.tracks.items() if v["kind"] == "removed"]
+        for tid in removed_ids:
             self._kalman.pop(tid, None)
         self.tracks = {k: v for k, v in self.tracks.items() if v["kind"] != "removed"}
-        for kf in self._kalman.values():
-            kf.predict()
+
+        # Only predict surviving tracks
+        for tid in self.tracks:
+            if tid in self._kalman:
+                self._kalman[tid].predict()
 
         matched_track, matched_det = set(), set()
         pool = list(self.tracks)
@@ -255,6 +265,7 @@ class SortTracker(CustomTrackerBase):
                 # a confirmed track that missed goes 'lost'; the Kalman keeps
                 # predicting so it can be re-found without spending a new id
                 t["kind"] = "lost"
+                self._just_lost.add(tid)
 
         for j, row in enumerate(rows):
             if j not in matched_det:
@@ -272,6 +283,7 @@ class CentroidTracker(CustomTrackerBase):
         self.max_age = int(params.get("max_age", 5))
 
     def update(self, dets, img=None):
+        self._just_lost.clear()
         dets = self._normalize_dets(dets)
         rows = [d for d in dets] if len(dets) else []
         remaining = list(range(len(rows)))
@@ -281,25 +293,37 @@ class CentroidTracker(CustomTrackerBase):
                 self.tracks[k]["kind"] = "removed"
         self.tracks = {k: v for k, v in self.tracks.items() if v["kind"] != "removed"}
 
-        for k, t in sorted(self.tracks.items(), key=lambda kv: -kv[1]["age"]):
-            if t["kind"] != "active" or not remaining:
-                continue
-            pc = _centre(self._predict_box(k))
-            best, best_i = 1e9, None
-            for i in remaining:
-                c = _centre(rows[i][:4])
-                dist = float(np.hypot(c[0] - pc[0], c[1] - pc[1]))
-                if dist < best:
-                    best, best_i = dist, i
-            if best_i is not None and best <= self.dist:
-                t["box"] = rows[best_i][:4]
-                t["age"] = 0
-                t["score"] = rows[best_i][4]
-                remaining.remove(best_i)
-            elif t["kind"] == "active":
-                t["kind"] = "lost"
-        for i in remaining:
-            self._fresh(rows[i][:4], rows[i][4], rows[i][5] if rows[i].shape[0] > 5 else 0)
+        active_track_ids = [k for k, v in self.tracks.items() if v["kind"] == "active"]
+        matched_tracks = set()
+        matched_dets = set()
+
+        if active_track_ids and rows:
+            cost_matrix = np.zeros((len(active_track_ids), len(rows)), dtype=np.float64)
+            for i, tid in enumerate(active_track_ids):
+                pc = _centre(self._predict_box(tid))
+                for j, r in enumerate(rows):
+                    c = _centre(r[:4])
+                    cost_matrix[i, j] = float(np.hypot(c[0] - pc[0], c[1] - pc[1]))
+
+            ri, ci = linear_sum_assignment(cost_matrix)
+            for i, j in zip(ri, ci):
+                if cost_matrix[i, j] <= self.dist:
+                    tid = active_track_ids[i]
+                    t = self.tracks[tid]
+                    t["box"] = rows[j][:4]
+                    t["age"] = 0
+                    t["score"] = rows[j][4]
+                    matched_tracks.add(tid)
+                    matched_dets.add(j)
+
+        for tid in active_track_ids:
+            if tid not in matched_tracks:
+                self.tracks[tid]["kind"] = "lost"
+                self._just_lost.add(tid)
+
+        for j in range(len(rows)):
+            if j not in matched_dets:
+                self._fresh(rows[j][:4], rows[j][4], rows[j][5] if rows[j].shape[0] > 5 else 0)
         return self.state_from()
 
 

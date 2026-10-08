@@ -3,6 +3,7 @@ Pure NumPy implementation without external framework dependencies.
 """
 from __future__ import annotations
 from typing import Any
+import threading
 import numpy as np
 
 
@@ -15,6 +16,7 @@ class TrackState:
 
 class BaseTrack:
     _count = 0
+    _lock = threading.Lock()
 
     def __init__(self):
         self.track_id = 0
@@ -30,8 +32,9 @@ class BaseTrack:
 
     @staticmethod
     def next_id() -> int:
-        BaseTrack._count += 1
-        return BaseTrack._count
+        with BaseTrack._lock:
+            BaseTrack._count += 1
+            return BaseTrack._count
 
     def activate(self, *args: Any) -> None:
         raise NotImplementedError
@@ -50,4 +53,5 @@ class BaseTrack:
 
     @staticmethod
     def reset_id() -> None:
-        BaseTrack._count = 0
+        with BaseTrack._lock:
+            BaseTrack._count = 0

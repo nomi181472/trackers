@@ -181,7 +181,7 @@ class VectorEmbedderEngine(Engine):
                 det_cls = dets[c, 5] if dets.shape[1] > 5 else 0
 
                 tr["kf"].update(det_box)
-                tr["box"] = tr["kf"].predict_box()
+                tr["box"] = list(det_box)
                 tr["score"] = float(det_score)
                 tr["cls"] = int(det_cls)
                 tr["hits"] += 1

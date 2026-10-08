@@ -69,6 +69,12 @@ class OpenCVSingleTracker(Engine):
         return TrackerState(active=[])
 
 
+    @classmethod
+    def reset_available_cache(cls) -> None:
+        """Clear cached availability dictionary so next probe re-evaluates factories."""
+        cls.AVAILABLE = None
+
+
 _OPENCV_FACTORIES = {
     "kcf": "TrackerKCF_create", "csrt": "TrackerCSRT_create",
     "mosse": "TrackerMOSSE_create", "mil": "TrackerMIL_create",
@@ -78,7 +84,9 @@ _OPENCV_FACTORIES = {
 }
 
 
-def _opencv_probe() -> dict:
+def _opencv_probe(force_refresh: bool = False) -> dict:
+    if force_refresh:
+        OpenCVSingleTracker.reset_available_cache()
     if OpenCVSingleTracker.AVAILABLE is None:
         import cv2
         avail = {}
