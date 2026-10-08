@@ -1,6 +1,6 @@
 """Shared runtime types every tracking engine speaks.
 
-Whatever its implementation -- homemade baseline, OpenCV follower, ultralytics
+Whatever its implementation -- homemade baseline, OpenCV follower, standalone MOT
 tracker -- an engine hands back the same tiny structure, so the metrics module,
 the explainer and the visualiser can treat them all identically:
 

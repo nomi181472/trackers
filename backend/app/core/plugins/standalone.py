@@ -1,12 +1,13 @@
 """Standalone native MOT trackers (ByteTrack, BoT-SORT, OC-SORT, DeepOC-SORT, FastTrack, TrackTrack).
 
-These MOT trackers are implemented natively in standalone pure NumPy/SciPy without
-PyTorch or Ultralytics model weights. They operate directly on synthetic detection streams
-or standardized coordinate bounding boxes.
+These MOT trackers are implemented natively in standalone pure NumPy/SciPy based directly
+on their original academic papers, without PyTorch or external model weights. They operate
+directly on synthetic detection streams or standardized coordinate bounding boxes.
 """
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 
@@ -14,63 +15,13 @@ from app.core.params import BOOL, FLOAT, GMC_OPTIONS, INT, SELECT, _d
 from app.core.plugins.base import Engine, TrackerPlugin
 from app.core.plugins.registry import register
 from app.core.trackers import Track, TrackerState
-
-
-class DetShim:
-    """A drop-in stand-in for `ultralytics.engine.results.Boxes`.
-
-    The ultralytics trackers only touch a few attributes of the detection
-    object (`conf`, `xywh`/`xywhr`, `cls`, `xyxy`) plus numpy-style boolean
-    indexing.  This shim serves our (N,5) [x1,y1,x2,y2,score] or (N,6)
-    [.., cls] arrays through exactly that interface.
-    """
-
-    def __init__(self, arr: np.ndarray):
-        arr = np.atleast_2d(np.asarray(arr, dtype=np.float64))
-        self._arr = arr
-
-    @property
-    def xyxy(self):
-        return self._arr[:, :4]
-
-    @property
-    def xywh(self):
-        a = self._arr[:, :4]
-        x1, y1, x2, y2 = a[:, 0], a[:, 1], a[:, 2], a[:, 3]
-        return np.stack([(x1 + x2) / 2, (y1 + y2) / 2, x2 - x1, y2 - y1], axis=1)
-
-    @property
-    def conf(self):
-        return self._arr[:, 4]
-
-    @property
-    def cls(self):
-        return self._arr[:, 5] if self._arr.shape[1] > 5 else np.zeros(len(self._arr))
-
-    def cpu(self):
-        return self
-
-    def numpy(self):
-        return self
-
-    def __getitem__(self, idx):
-        return DetShim(self._arr[idx])
-
-    def __len__(self):
-        return len(self._arr)
-
-    def __bool__(self):
-        return len(self._arr) > 0
-
-
-from types import SimpleNamespace
 from app.core.trackers_standalone import TRACKER_MAP
 
 
-class UltralyticsEngine(Engine):
+class StandaloneMOTEngine(Engine):
     """Adapter around standalone MOT trackers (ByteTrack, BoT-SORT, OC-SORT, DeepOC-SORT, FastTrack, TrackTrack).
 
-    Runs self-contained pure-NumPy tracker implementations directly without needing PyTorch or external model weights.
+    Runs self-contained pure-NumPy tracker implementations directly from original papers without PyTorch or external weights.
     """
 
     def __init__(self, tracker_id: str, params: dict, fps: int, device: str = "cpu"):
@@ -111,18 +62,18 @@ class UltralyticsEngine(Engine):
         return TrackerState(active=active, lost_now=lost)
 
 
-class _UltralyticsPlugin(TrackerPlugin):
+class _StandaloneMOTPlugin(TrackerPlugin):
     """Shared behaviour: standalone tracker execution in pure NumPy/SciPy."""
 
-    engine = "ultralytics"
+    engine = "standalone"
     mode = "multi"
 
-    def build(self, params: dict, fps: int, device: str = "cpu") -> UltralyticsEngine:
-        return UltralyticsEngine(self.id, params, fps, device)
+    def build(self, params: dict, fps: int, device: str = "cpu") -> StandaloneMOTEngine:
+        return StandaloneMOTEngine(self.id, params, fps, device)
 
 
 @register
-class ByteTrackPlugin(_UltralyticsPlugin):
+class ByteTrackPlugin(_StandaloneMOTPlugin):
     id = "bytetrack"
 
     @classmethod
@@ -162,7 +113,7 @@ class ByteTrackPlugin(_UltralyticsPlugin):
 
 
 @register
-class BotSortPlugin(_UltralyticsPlugin):
+class BotSortPlugin(_StandaloneMOTPlugin):
     id = "botsort"
 
     @classmethod
@@ -210,7 +161,7 @@ class BotSortPlugin(_UltralyticsPlugin):
 
 
 @register
-class OcSortPlugin(_UltralyticsPlugin):
+class OcSortPlugin(_StandaloneMOTPlugin):
     id = "ocsort"
 
     @classmethod
@@ -250,7 +201,7 @@ class OcSortPlugin(_UltralyticsPlugin):
 
 
 @register
-class DeepOcSortPlugin(_UltralyticsPlugin):
+class DeepOcSortPlugin(_StandaloneMOTPlugin):
     id = "deepocsort"
 
     @classmethod
@@ -296,7 +247,7 @@ class DeepOcSortPlugin(_UltralyticsPlugin):
 
 
 @register
-class FastTrackPlugin(_UltralyticsPlugin):
+class FastTrackPlugin(_StandaloneMOTPlugin):
     id = "fasttrack"
 
     @classmethod
@@ -344,7 +295,7 @@ class FastTrackPlugin(_UltralyticsPlugin):
 
 
 @register
-class TrackTrackPlugin(_UltralyticsPlugin):
+class TrackTrackPlugin(_StandaloneMOTPlugin):
     id = "tracktrack"
 
     @classmethod

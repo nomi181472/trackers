@@ -21,7 +21,7 @@ CATALOG_KEYS = {
 }
 
 OPENCV_IDS = {"kcf", "csrt", "mosse", "mil", "medianflow", "nano", "vit", "dasiamrpn"}
-ULTRALYTICS_IDS = {"bytetrack", "botsort", "ocsort", "deepocsort", "fasttrack", "tracktrack"}
+STANDALONE_IDS = {"bytetrack", "botsort", "ocsort", "deepocsort", "fasttrack", "tracktrack"}
 
 
 def test_every_tracker_is_registered():
@@ -107,8 +107,8 @@ def test_engine_families_are_classified_consistently():
     for plugin in REGISTRY.all():
         if plugin.id in OPENCV_IDS:
             assert plugin.engine == "opencv" and plugin.mode == "single", plugin.id
-        elif plugin.id in ULTRALYTICS_IDS:
-            assert plugin.engine == "ultralytics" and plugin.mode == "multi", plugin.id
+        elif plugin.id in STANDALONE_IDS:
+            assert plugin.engine == "standalone" and plugin.mode == "multi", plugin.id
         else:
             assert plugin.engine == "custom" and plugin.mode == "multi", plugin.id
 

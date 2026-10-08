@@ -1,5 +1,5 @@
 """Standalone Multi-Object Tracking (MOT) Engines in pure NumPy / SciPy.
-Drop-in replacements for Ultralytics MOT trackers without PyTorch or external model weights.
+Native implementations from original papers without PyTorch or external model weights.
 """
 from __future__ import annotations
 from types import SimpleNamespace

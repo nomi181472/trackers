@@ -213,6 +213,7 @@ select, input[type="number"] {
 .tr-head .nm { font-weight: 650; }
 .tr-head .tag { color: var(--muted); font-size: 12px; font-weight: 400; }
 .tr-head .badge { margin-left: auto; font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; border-radius: 5px; padding: 2px 7px; }
+.badge-sa { background: #12324f; color: #8bd0ff; }
 .badge-ul { background: #12324f; color: #8bd0ff; }
 .badge-cu { background: #2a2536; color: #c9a6ff; }
 .badge-cv { background: #2a3226; color: #a6e6a0; }

@@ -5,7 +5,7 @@ import type { Catalog, ParamValues } from "@/lib/types";
 import { ParamControl } from "@/components/controls";
 
 const BADGE: Record<string, string> = {
-  ultralytics: "badge-ul",
+  standalone: "badge-sa",
   custom: "badge-cu",
   opencv: "badge-cv",
 };

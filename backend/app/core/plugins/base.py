@@ -39,7 +39,7 @@ class TrackerPlugin(ABC):
 
     Subclasses set the three identity class attributes and implement ``build``.
     ``meta()`` is a classmethod so the catalog can be served without importing
-    cv2/ultralytics into the request path more than necessary.
+    heavy tracker dependencies into the request path more than necessary.
     """
 
     id: str
