@@ -65,29 +65,22 @@ class DetShim:
         return len(self._arr) > 0
 
 
-class UltralyticsEngine(Engine):
-    """Adapter around the current ultralytics tracker API (8.4+).
+from types import SimpleNamespace
+from app.core.trackers_standalone import TRACKER_MAP
 
-    Loads the tracker's own YAML config inside the package, overlays any user
-    hyperparameters, then drives `tracker.update(DetShim(dets), img)` and reads
-    back the `(N,8)` rows  [x1,y1,x2,y2,id,score,cls,idx].
+
+class UltralyticsEngine(Engine):
+    """Adapter around standalone MOT trackers (ByteTrack, BoT-SORT, OC-SORT, DeepOC-SORT, FastTrack, TrackTrack).
+
+    Runs self-contained pure-NumPy tracker implementations directly without needing PyTorch or external model weights.
     """
 
     def __init__(self, tracker_id: str, params: dict, fps: int, device: str = "cpu"):
-        import ultralytics
-        from ultralytics.utils import IterableSimpleNamespace, YAML
-        from ultralytics.trackers.track import TRACKER_MAP
         self._tracker_cls = TRACKER_MAP[tracker_id]
-
-        yaml_path = Path(ultralytics.__file__).resolve().parent / "cfg" / "trackers" / f"{tracker_id}.yaml"
-        cfg = IterableSimpleNamespace(**YAML.load(str(yaml_path)))
+        cfg = SimpleNamespace(**params)
         cfg.device = device
-        for k, v in params.items():
-            if hasattr(cfg, k) or k in ("track_high_thresh", "track_low_thresh", "new_track_thresh",
-                                        "track_buffer", "match_thresh", "fuse_score"):
-                setattr(cfg, k, v)
-        self.tracker = self._tracker_cls(args=cfg)
-        self.reid = bool(getattr(self.tracker, "encoder", None) is not None)
+        self.tracker = self._tracker_cls(args=cfg, frame_rate=fps)
+        self.reid = bool(getattr(self.tracker, "with_reid", False))
 
     def update(self, dets, img):
         dets = np.asarray(dets, dtype=np.float64)
@@ -95,7 +88,7 @@ class UltralyticsEngine(Engine):
             dets = dets[None]
         if dets.shape[1] < 5:
             dets = np.pad(dets, ((0, 0), (0, 5 - dets.shape[1])))
-        out = self.tracker.update(DetShim(dets), np.ascontiguousarray(img) if img is not None else None)
+        out = self.tracker.update(dets, np.ascontiguousarray(img) if img is not None else None)
         rows = np.asarray(out, dtype=np.float64).reshape(-1, 8)
         active, lost = [], []
         prev_ids = {t.id for t in getattr(self, "_last_active", [])}
@@ -115,12 +108,7 @@ class UltralyticsEngine(Engine):
 
 
 class _UltralyticsPlugin(TrackerPlugin):
-    """Shared behaviour: the same engine, availability taken on faith.
-
-    Probing for real would mean importing ultralytics inside `/api/trackers`,
-    which makes the first catalog call seconds slower for no useful signal --
-    the package is a hard requirement of this app anyway.
-    """
+    """Shared behaviour: standalone tracker execution in pure NumPy/SciPy."""
 
     engine = "ultralytics"
     mode = "multi"

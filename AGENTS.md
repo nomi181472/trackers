@@ -14,7 +14,7 @@ This project is an **interactive failure and stress-testing simulator for Multi-
    - All trackers evaluated side-by-side in a simulation run receive the **exact same detection stream**, ensuring fair, reproducible MOT benchmarks (MOTA, MOTP, IDF1, ID switches, fragments, and latency).
 
 3. **Supported Trackers**:
-   - **Ultralytics MOT Engines**: `bytetrack`, `botsort`, `ocsort`, `deepocsort`, `fasttrack`, `tracktrack` (executed via standalone tracker updates).
+   - **Standalone MOT Engines**: `bytetrack`, `botsort`, `ocsort`, `deepocsort`, `fasttrack`, `tracktrack` (implemented natively in standalone pure NumPy/SciPy without `ultralytics` or `torch`).
    - **Custom Baselines**: `greedy_iou`, `centroid`, `sort`, `embed_sort` (implemented from scratch in pure NumPy/SciPy without external downloads).
    - **OpenCV Single-Object Trackers**: `kcf`, `csrt`, `mosse`, `mil`, `medianflow`, `nano`, `vit`, `dasiamrpn`.
 
