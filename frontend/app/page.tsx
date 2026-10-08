@@ -120,7 +120,7 @@ export default function Home() {
   const [clearing, setClearing] = useState<boolean>(false);
   const [clearStatus, setClearStatus] = useState<string | null>(null);
   const [clearError, setClearError] = useState<string | null>(null);
-  const [selectedClearWorker, setSelectedClearWorker] = useState<string>("all");
+  const [selectedClearWorker, setSelectedClearWorker] = useState<string>("worker-n");
 
   useEffect(() => {
     const savedTheme = (localStorage.getItem("tracker_theme") as "dark" | "light" | "midnight") || "dark";
@@ -317,10 +317,7 @@ export default function Home() {
                     fontWeight: 600,
                   }}
                 >
-                  <option value="all">🌐 All Workers (worker-n, worker-r, worker-v)</option>
-                  <option value="worker-n">⚡ worker-n</option>
-                  <option value="worker-r">🔄 worker-r</option>
-                  <option value="worker-v">💻 worker-v</option>
+                  <option value="worker-n">⚡ worker-n (Active Node)</option>
                 </select>
               </div>
               {clearError ? (

@@ -101,8 +101,8 @@ export async function pollUntilDone(jobId: string, onProgress: (j: JobStatus) =>
       if (j.status === "done" || j.status === "error") return j;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      // If serverless container just spun up or hasn't synced the job file yet, retry up to 6 times (6 * 800ms ~ 5s)
-      if (msg.includes("404") && notFoundRetries < 6) {
+      // Allow up to 15 retries (15 * 800ms ~ 12s) while container writes job record to disk
+      if ((msg.includes("404") || msg.includes("502") || msg.includes("503")) && notFoundRetries < 15) {
         notFoundRetries++;
         await new Promise((r) => setTimeout(r, 800));
         continue;

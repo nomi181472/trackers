@@ -172,9 +172,7 @@ export function LogsView() {
               }}
               title="Select which worker node to inspect logs from"
             >
-              <option value="worker-n">⚡ worker-n</option>
-              <option value="worker-r">🔄 worker-r</option>
-              <option value="worker-v">💻 worker-v</option>
+              <option value="worker-n">⚡ worker-n (Active)</option>
             </select>
           </div>
 
