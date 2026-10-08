@@ -1,4 +1,4 @@
-FROM node:20-alpine as builder
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
@@ -6,19 +6,23 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 
-# Build the app
+# Build Next.js app (configured with output: "standalone" in next.config.mjs)
 COPY . .
+ENV NEXT_PUBLIC_API_URL=""
 RUN npm run build
 
 # Production server
-FROM node:20-alpine
+FROM node:20-alpine AS runner
 WORKDIR /app
-COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/package.json ./package.json
 
-# Serve with serve
-RUN npm install -g serve
-CMD ["serve", "-s", "/app/.next/static/chunks/app"]
+ENV NODE_ENV=production
+ENV PORT=3000
+
+# Copy standalone build and static assets
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
+COPY --from=builder /app/public ./public
 
 EXPOSE 3000
+
+CMD ["node", "server.js"]

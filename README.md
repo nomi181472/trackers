@@ -12,7 +12,7 @@
 **A visual & programmatic stress-testing simulator to uncover *why*, *when*, and *how* Computer Vision trackers fail.**  
 Stop debugging tracker regressions in production. Benchmark **18 tracking algorithms** under mathematically controlled perturbations (severe occlusions, path crossing, camera jitter, motion blur, and visual look-alikes).
 
-[Why This Matters for Your Apps](#-why-this-helps-in-your-industry-applications) • [Interactive Showcase](#-multi-object-tracking-in-action) • [Technical Architecture](#-technical-architecture--isolation-principles) • [Benchmark Trade-Offs](#-deep-dive-benchmarks--trade-off-analysis) • [Supported Trackers (18)](#-tracker-catalog--algorithm-architectures-18) • [API Guide](#-rest-api-reference)
+[Why This Matters for Your Apps](#-why-this-helps-in-your-industry-applications) • [Interactive Showcase](#-multi-object-tracking-in-action) • [Benchmark Trade-Offs](#-deep-dive-benchmarks--trade-off-analysis) • [Supported Trackers (18)](#-tracker-catalog--algorithm-architectures-18) • [API Guide](#-rest-api-reference) • [References & Citations](#-references--citations)
 
 </div>
 
@@ -40,6 +40,26 @@ All trackers evaluated below simultaneously process the **exact same synthetic m
 <div align="center">
   <img src="demos/grid_6way_trackers_stress.gif" alt="6-Way Multi-Object Tracker Stress Grid" width="100%" style="border-radius: 8px; border: 1px solid #334155;" />
   <p><em>Row 1: ByteTrack (BYTE association) • BoT-SORT (ReID + GMC) • OC-SORT (Observation momentum)<br/>Row 2: DeepOCSORT (Deep ReID) • EmbedSORT (Cosine Appearance) • SORT (Kalman + Hungarian)</em></p>
+</div>
+
+<br/>
+
+### 🚶 Multi-Person / Pedestrian Tracking Stress Test
+Evaluation with **realistic pedestrian aspect ratios and walking kinematics** across intersection crossings, structural occlusions, and subtle camera vibration:
+
+<div align="center">
+  <img src="demos/grid_pedestrians_tracking.gif" alt="Pedestrians Multi-Object Tracking Benchmark Grid" width="85%" style="border-radius: 8px; border: 1px solid #334155;" />
+  <p><em>Pedestrians Grid: ByteTrack vs BoT-SORT vs OC-SORT vs EmbedSORT under pedestrian crossing & occlusion conditions.</em></p>
+</div>
+
+<br/>
+
+### 🚗 Vehicle & Traffic Fleet Tracking Stress Test
+Evaluation with **vehicle aspect ratios and highway velocities** across lane mergers, bridge/pillar occlusions, and road vibration:
+
+<div align="center">
+  <img src="demos/grid_cars_tracking.gif" alt="Vehicles Multi-Object Tracking Benchmark Grid" width="85%" style="border-radius: 8px; border: 1px solid #334155;" />
+  <p><em>Vehicles Grid: Testing highway trajectory stability, bounding box aspect-ratio dynamics, and identity retention across vehicles.</em></p>
 </div>
 
 <br/>
@@ -234,6 +254,133 @@ The backend exposes an asynchronous REST API documented with interactive Swagger
 ├── run.sh                                  # Concurrency runner with port management
 └── stop.sh                                 # Clean shutdown & teardown script
 ```
+
+---
+
+## 📚 References & Citations
+
+If you use this benchmark simulator or any of the tracker implementations in your academic research, industrial evaluations, or publications, please cite the respective foundational works:
+
+### Multi-Object Tracking (MOT) Foundations
+
+* **ByteTrack**  
+  > Zhang, Y., Sun, P., Jiang, Y., Yu, D., Weng, F., Yuan, Z., Luo, P., Liu, W., & Wang, X. (2022). *ByteTrack: Multi-Object Tracking by Associating Every Detection Box*. European Conference on Computer Vision (ECCV).  
+  ```bibtex
+  @inproceedings{zhang2022bytetrack,
+    title={ByteTrack: Multi-Object Tracking by Associating Every Detection Box},
+    author={Zhang, Yifu and Sun, Peize and Jiang, Yi and Yu, Dongdong and Weng, Fucheng and Yuan, Zehuan and Luo, Ping and Liu, Wenyu and Wang, Xinggang},
+    booktitle={European Conference on Computer Vision (ECCV)},
+    year={2022}
+  }
+  ```
+
+* **BoT-SORT**  
+  > Aharon, N., Orfaig, R., & Bobrovsky, B.-Z. (2022). *BoT-SORT: Robust Associations Multi-Pedestrian Tracker*. arXiv preprint arXiv:2206.14651.  
+  ```bibtex
+  @article{aharon2022bot,
+    title={BoT-SORT: Robust Associations Multi-Pedestrian Tracker},
+    author={Aharon, Nir and Orfaig, Roy and Bobrovsky, Ben-Zion},
+    journal={arXiv preprint arXiv:2206.14651},
+    year={2022}
+  }
+  ```
+
+* **OC-SORT**  
+  > Cao, J., Pang, J., Weng, X., Khirodkar, R., & Kitani, K. (2023). *Observation-Centric SORT: Rethinking SORT for Robust Multi-Object Tracking*. IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR).  
+  ```bibtex
+  @inproceedings{cao2023observation,
+    title={Observation-Centric SORT: Rethinking SORT for Robust Multi-Object Tracking},
+    author={Cao, Jinkun and Pang, Jiangmiao and Weng, Xinshuo and Khirodkar, Rawal and Kitani, Kris},
+    booktitle={IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
+    year={2023}
+  }
+  ```
+
+* **Deep OC-SORT**  
+  > Maggiolino, G., Ahmad, A., Cao, J., & Kitani, K. (2023). *Deep OC-SORT: Multi-Pedestrian Tracking by Adaptive Re-Identification*. IEEE International Conference on Robotics and Automation (ICRA).  
+  ```bibtex
+  @inproceedings{maggiolino2023deep,
+    title={Deep OC-SORT: Multi-Pedestrian Tracking by Adaptive Re-Identification},
+    author={Maggiolino, Gerard and Ahmad, Adham and Cao, Jinkun and Kitani, Kris},
+    booktitle={IEEE International Conference on Robotics and Automation (ICRA)},
+    year={2023}
+  }
+  ```
+
+* **SORT (Simple Online and Realtime Tracking)**  
+  > Bewley, A., Ge, Z., Ott, L., Ramos, F., & Upcroft, B. (2016). *Simple Online and Realtime Tracking*. IEEE International Conference on Image Processing (ICIP).  
+  ```bibtex
+  @inproceedings{bewley2016simple,
+    title={Simple Online and Realtime Tracking},
+    author={Bewley, Alex and Ge, Zongyuan and Ott, Lionel and Ramos, Fabio and Upcroft, Ben},
+    booktitle={IEEE International Conference on Image Processing (ICIP)},
+    year={2016}
+  }
+  ```
+
+* **DeepSORT**  
+  > Wojke, N., Bewley, A., & Paulus, D. (2017). *Simple Online and Realtime Tracking with a Deep Association Metric*. IEEE International Conference on Image Processing (ICIP).  
+  ```bibtex
+  @inproceedings{wojke2017simple,
+    title={Simple Online and Realtime Tracking with a Deep Association Metric},
+    author={Wojke, Nicolai and Bewley, Alex and Paulus, Dietrich},
+    booktitle={IEEE International Conference on Image Processing (ICIP)},
+    year={2017}
+  }
+  ```
+
+* **TrackTrack**  
+  > Shim, K., Ko, K., Yang, Y., & Kim, C. (2025). *Focusing on Tracks for Online Multi-Object Tracking*. IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR).  
+  ```bibtex
+  @inproceedings{shim2025focusing,
+    title={Focusing on Tracks for Online Multi-Object Tracking},
+    author={Shim, Kyujin and Ko, Kangwook and Yang, YuJin and Kim, Changick},
+    booktitle={IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
+    year={2025}
+  }
+  ```
+
+* **FastTracker**  
+  > Hashempoor, H., & Hwang, Y. D. (2025). *FastTracker: Real-Time and Accurate Visual Tracking*. arXiv preprint arXiv:2508.14370.  
+  ```bibtex
+  @article{hashempoor2025fasttracker,
+    title={FastTracker: Real-Time and Accurate Visual Tracking},
+    author={Hashempoor, Hamidreza and Hwang, Yu Dong},
+    journal={arXiv preprint arXiv:2508.14370},
+    year={2025}
+  }
+  ```
+
+### Single-Object Tracking (SOT) Foundations
+
+* **KCF**  
+  > Henriques, J. F., Caseiro, R., Martins, P., & Batista, J. (2015). *High-Speed Tracking with Kernelized Correlation Filters*. IEEE Transactions on Pattern Analysis and Machine Intelligence (TPAMI), 37(3), 583-596.
+
+* **CSRT**  
+  > Lukežič, A., Vojíř, T., Čehovin Zajc, L., Matas, J., & Kristan, M. (2018). *Discriminative Correlation Filter with Channel and Spatial Reliability*. International Journal of Computer Vision (IJCV), 126(7), 671-688.
+
+* **MOSSE**  
+  > Bolme, D. S., Beveridge, J. R., Draper, B. A., & Lui, Y. M. (2010). *Visual Object Tracking using Adaptive Correlation Filters*. IEEE Conference on Computer Vision and Pattern Recognition (CVPR).
+
+* **MIL**  
+  > Babenko, B., Yang, M.-H., & Belongie, S. (2011). *Robust Object Tracking with Online Multiple Instance Learning*. IEEE Transactions on Pattern Analysis and Machine Intelligence (TPAMI), 33(8), 1619-1632.
+
+* **MedianFlow**  
+  > Kalal, Z., Mikolajczyk, K., & Matas, J. (2010). *Forward-Backward Error: Automatic Detection of Tracking Failures*. International Conference on Pattern Recognition (ICPR).
+
+* **DaSiamRPN**  
+  > Zheng, Z., Wu, Q., Hou, Y., Yang, J., & Zheng, L. (2018). *Distractor-aware Siamese Networks for Visual Object Tracking*. European Conference on Computer Vision (ECCV).
+
+* **NanoTrack**  
+  > Chu, H., Ding, W., & Zhou, B. (2021). *NanoTrack: Ultralightweight Object Tracking on Resource-Constrained Embedded Devices*.
+
+### Benchmark & Evaluation Metrics
+
+* **CLEAR MOT (MOTA / MOTP)**  
+  > Bernardin, K., & Stiefelhagen, R. (2008). *Evaluating Multiple Object Tracking Performance: The CLEAR MOT Metrics*. EURASIP Journal on Image and Video Processing, 2008, 1-10.
+
+* **IDF1 Metric**  
+  > Ristani, E., Solera, F., Zou, R. S., Cucchiara, R., & Tomasi, C. (2016). *Performance Measures and a Data Set for Multi-Target, Multi-Camera Tracking*. European Conference on Computer Vision (ECCV) Workshops.
 
 ---
 
