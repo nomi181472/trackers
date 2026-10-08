@@ -14,17 +14,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxext6 \
     && rm -rf /var/lib/apt/lists/*
 
-# Install lightweight CPU-only PyTorch first to reduce build time & avoid huge CUDA downloads
-RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
-
-# Install application dependencies
+# Copy dependencies
 COPY requirements.txt .
+
+# Install dependencies (works natively on both ARM64 Ampere and x86 AMD)
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy backend source code
 COPY . .
 
-# Expose default port (Render will override via $PORT at runtime)
+# Expose default port
 EXPOSE 8000
 
 # Start Uvicorn dynamically binding to $PORT (defaulting to 8000)
