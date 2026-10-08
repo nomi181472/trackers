@@ -250,3 +250,75 @@ def get_log_lines(
         "start_line": start,
         "end_line": end,
     }
+
+
+@router.post("/cleanup")
+@router.delete("/cleanup")
+def cleanup_data_files(
+    include_uploads: bool = False,
+    include_jobs: bool = True,
+    include_scenarios: bool = True,
+):
+    """Purge generated job media (*.mp4, *.jpg) and scenario clips on request.
+    
+    Targets:
+    - backend/data/jobs/**/*.mp4
+    - backend/data/jobs/**/*.jpg
+    - backend/data/scenarios/*.mp4
+    - (optional) backend/data/uploads/*
+    """
+    deleted_count = 0
+    freed_bytes = 0
+    details = {"jobs_mp4": 0, "jobs_jpg": 0, "scenarios_mp4": 0, "uploads": 0}
+
+    # 1. Clean jobs directory (mp4 and jpg files)
+    if include_jobs and config.JOBS_DIR.exists():
+        for pattern, key in [("**/*.mp4", "jobs_mp4"), ("**/*.jpg", "jobs_jpg")]:
+            for p in config.JOBS_DIR.glob(pattern):
+                try:
+                    if p.is_file():
+                        sz = p.stat().st_size
+                        p.unlink()
+                        deleted_count += 1
+                        freed_bytes += sz
+                        details[key] += 1
+                except OSError:
+                    continue
+
+    # 2. Clean scenarios directory (mp4 files)
+    if include_scenarios and config.SCENARIOS_DIR.exists():
+        for p in config.SCENARIOS_DIR.glob("*.mp4"):
+            try:
+                if p.is_file():
+                    sz = p.stat().st_size
+                    p.unlink()
+                    deleted_count += 1
+                    freed_bytes += sz
+                    details["scenarios_mp4"] += 1
+            except OSError:
+                continue
+
+    # 3. Clean uploads directory if explicitly requested
+    if include_uploads and config.UPLOADS_DIR.exists():
+        for p in config.UPLOADS_DIR.iterdir():
+            try:
+                if p.is_file():
+                    sz = p.stat().st_size
+                    p.unlink()
+                    deleted_count += 1
+                    freed_bytes += sz
+                    details["uploads"] += 1
+            except OSError:
+                continue
+
+    # Ensure empty target directories exist for future simulations
+    for d in (config.SCENARIOS_DIR, config.JOBS_DIR, config.VIDEOS_DIR, config.UPLOADS_DIR):
+        d.mkdir(parents=True, exist_ok=True)
+
+    return {
+        "ok": True,
+        "deleted_count": deleted_count,
+        "freed_bytes": freed_bytes,
+        "freed_mb": round(freed_bytes / (1024 * 1024), 2),
+        "details": details,
+    }

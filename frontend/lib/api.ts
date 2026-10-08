@@ -116,3 +116,22 @@ export function getLogLines(params: {
   const query = q.toString();
   return http(`/api/logs${query ? `?${query}` : ""}`);
 }
+
+export function cleanupGeneratedFiles(params?: {
+  include_uploads?: boolean;
+  include_jobs?: boolean;
+  include_scenarios?: boolean;
+}): Promise<{
+  ok: boolean;
+  deleted_count: number;
+  freed_bytes: number;
+  freed_mb: number;
+  details: Record<string, number>;
+}> {
+  const q = new URLSearchParams();
+  if (params?.include_uploads) q.set("include_uploads", "true");
+  if (params?.include_jobs !== undefined) q.set("include_jobs", String(params.include_jobs));
+  if (params?.include_scenarios !== undefined) q.set("include_scenarios", String(params.include_scenarios));
+  const qs = q.toString();
+  return http(`/api/cleanup${qs ? `?${qs}` : ""}`, { method: "POST" });
+}
