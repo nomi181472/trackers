@@ -2,7 +2,7 @@
 
 import { useState, useRef } from "react";
 import { mediaUrl } from "@/lib/api";
-import type { RealResult, SimulationResult, TrackerResult } from "@/lib/types";
+import type { SimulationResult, TrackerResult } from "@/lib/types";
 
 const FMT = new Intl.NumberFormat(undefined, { maximumFractionDigits: 3 });
 
@@ -947,9 +947,4 @@ export function CompareTable({ history }: { history: SimulationResult[] }) {
       </div>
     </div>
   );
-}
-
-export function RealResultsView({ result }: { result: RealResult }) {
-  const r = result.results[0];
-  return <ResultCard r={r} fps={15} />;
 }

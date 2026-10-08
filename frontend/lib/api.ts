@@ -71,25 +71,6 @@ export function getJob(jobId: string): Promise<JobStatus> {
   return http(`/api/jobs/${jobId}`);
 }
 
-export async function uploadVideo(file: File): Promise<{ upload_id: string; size: number }> {
-  const base = getApiBase();
-  const url = base ? `${base}/api/real/upload` : `/api/real/upload`;
-  const form = new FormData();
-  form.append("file", file);
-  const res = await fetch(url, { method: "POST", body: form });
-  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || "upload failed");
-  return res.json();
-}
-
-export function startRealJob(payload: {
-  upload_id: string;
-  tracker_id: string;
-  params: ParamValues;
-  det_params: ParamValues;
-}): Promise<{ job_id: string }> {
-  return http("/api/real/jobs", { method: "POST", body: JSON.stringify(payload) });
-}
-
 export async function pollUntilDone(jobId: string, onProgress: (j: JobStatus) => void) {
   let j: JobStatus;
   let notFoundRetries = 0;

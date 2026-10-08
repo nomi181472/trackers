@@ -78,25 +78,6 @@ def test_known_tracker_on_simulation_is_accepted(client):
     assert r.json()["job_id"]
 
 
-def test_unknown_tracker_on_real_job_is_a_400(client, uploaded):
-    r = client.post("/api/real/jobs", json={"upload_id": uploaded, "tracker_id": "not_a_tracker"})
-    assert r.status_code == 400, r.text
-    assert "Unknown tracker" in r.json()["detail"]
-
-
-def test_single_object_tracker_is_rejected_in_real_mode(client, uploaded):
-    """Fix 4: it used to build the engine, never init it, and score a black clip 'A'."""
-    r = client.post("/api/real/jobs", json={"upload_id": uploaded, "tracker_id": "mil"})
-    assert r.status_code == 400, r.text
-    assert "single-object" in r.json()["detail"].lower()
-
-
-def test_real_job_requires_an_upload(client):
-    assert client.post("/api/real/jobs", json={"tracker_id": "bytetrack"}).status_code == 400
-    assert client.post("/api/real/jobs",
-                       json={"upload_id": "nope.mp4", "tracker_id": "bytetrack"}).status_code == 400
-
-
 def test_job_status_reports_unknown_jobs(client):
     assert client.get("/api/jobs/definitely-not-a-job").status_code == 404
 
@@ -184,3 +165,15 @@ def test_cleanup_and_clear_endpoints(client):
     assert r_del.json()["ok"] is True
     assert not dummy_job_mp4.exists()
     assert not dummy_sc_mp4.exists()
+
+
+def test_cleanup_admin_key_protection(client, monkeypatch):
+    """When SIM_ADMIN_KEY is configured in env, calls without X-Admin-Key must be 403."""
+    monkeypatch.setenv("SIM_ADMIN_KEY", "super-secret-key")
+    r = client.post("/api/clear")
+    assert r.status_code == 403
+    assert "Unauthorized" in r.json()["detail"]
+
+    r_authorized = client.post("/api/clear", headers={"X-Admin-Key": "super-secret-key"})
+    assert r_authorized.status_code == 200
+    assert r_authorized.json()["ok"] is True

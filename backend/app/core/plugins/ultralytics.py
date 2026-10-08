@@ -1,10 +1,8 @@
-"""Ultralytics' native trackers, driven standalone.
+"""Standalone native MOT trackers (ByteTrack, BoT-SORT, OC-SORT, DeepOC-SORT, FastTrack, TrackTrack).
 
-The ultralytics trackers are run *directly* (no `model.predict(track=...)`) so
-the simulator can feed them synthetic or YOLO detections and read back
-per-frame identities for profiling.  Each tracker reads its full config from the
-community YAML shipped inside the ultralytics package, so every knob exposed in
-the UI maps 1:1 onto a real library parameter.
+These MOT trackers are implemented natively in standalone pure NumPy/SciPy without
+PyTorch or Ultralytics model weights. They operate directly on synthetic detection streams
+or standardized coordinate bounding boxes.
 """
 from __future__ import annotations
 

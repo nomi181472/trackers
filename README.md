@@ -150,15 +150,17 @@ For point-to-point target following and region tracking:
 * `mosse` (Minimum Output Sum of Squared Error — ultra-fast)
 * `mil` (Multiple Instance Learning)
 * `medianflow` (Forward-Backward optical flow error tracking)
-* `nano` (NanoTrack lightweight neural tracker)
-* `vit` (Vision Transformer based tracker)
-* `dasiamrpn` (Distractor-aware Siamese Region Proposal Network)
+* `nano` (NanoTrack lightweight neural tracker — *requires external ONNX model weights*)
+* `vit` (Vision Transformer based tracker — *requires external model weights*)
+* `dasiamrpn` (Distractor-aware Siamese Region Proposal Network — *requires external ONNX model weights*)
+
+> **Note on Standalone Implementations**: Multi-Object Tracking algorithms (`bytetrack`, `botsort`, `ocsort`, `deepocsort`, `fasttrack`, `tracktrack`, `sort`, `embed_sort`, `greedy_iou`, `centroid`) are implemented in pure native NumPy and SciPy. They execute standalone without external model checkpoints or PyTorch dependencies. Single-object neural trackers (`nano`, `vit`, `dasiamrpn`) utilize OpenCV's DNN tracker module and require corresponding external model weights.
 
 ---
 
 ## 🔬 Mathematical Evaluation Metrics
 
-The simulator benchmarks all trackers against mathematically exact ground truth without external black boxes:
+The simulator benchmarks all trackers against mathematically exact ground truth without external black boxes. Step-by-step diagnostics are coupled with the reference benchmark library (`py-motmetrics`) for gold-standard validation:
 
 ### 1. MOTA (Multiple Object Tracking Accuracy)
 Quantifies overall detection accuracy, false alarms, and identity stability:
@@ -171,6 +173,8 @@ $$\text{MOTP} = \frac{\sum_{t, i} \text{IoU}(b_{t, i}, g_{t, i})}{\sum_{t} |M_t|
 ### 3. IDF1 (Identification F1-Score)
 Evaluates how consistently each object retains its distinct identity across the entire clip:
 $$\text{IDF1} = \frac{2 \cdot \text{IDTP}}{2 \cdot \text{IDTP} + \text{IDFP} + \text{IDFN}}$$
+
+> **Validation Against Reference Implementation**: Each simulation run validates hand-rolled frame-by-frame diagnostic scores against `py-motmetrics` (`motmetrics.metrics`), ensuring numbers adhere strictly to established academic standards (CLEAR MOT / IDF1).
 
 ---
 
@@ -397,7 +401,7 @@ Expose your new plugin file by adding an import statement in [`backend/app/core/
 
 ```python
 # backend/app/core/plugins/__init__.py
-from app.core.plugins import custom, ultralytics, opencv, vector_embed, my_custom_tracker
+from app.core.plugins import custom, standalone, opencv, vector_embed, my_custom_tracker
 ```
 
 #### Step 4: Verify Integration

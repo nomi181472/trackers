@@ -144,10 +144,6 @@ export interface TrackerResult {
   error?: string;
 }
 
-export interface RealResult {
-  results: TrackerResult[];
-}
-
 export interface SimulationResult {
   scenario: ScenarioMeta;
   detection: Record<string, number | boolean | string>;

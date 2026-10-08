@@ -7,9 +7,9 @@ exactly:
     - did a track die/reincarnate (post-loss identity reset)?
     - was the failure the tracker's fault, or the detector's (no box existed)?
 
-Standard MOT numbers (MOTA / MOTP / IDF1 / IDSW / MT / ML) are computed by
-hand -- no external benchmark library -- so every digit below has a plain
-language explanation the explainer can point at.
+Standard MOT metrics (MOTA, MOTP, IDF1, IDSW, MT, ML) are computed frame-by-frame
+to provide clear step-level diagnostics and natural-language explanations, and are
+validated against the standard reference implementation (`py-motmetrics`).
 """
 from __future__ import annotations
 

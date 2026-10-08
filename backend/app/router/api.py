@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import os
 
-from fastapi import APIRouter, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.responses import FileResponse
 
 from app import config
@@ -14,6 +14,13 @@ from app.core.runner import run_simulation, write_video, video_to_data_url
 from app.core.scenario import Scenario
 
 router = APIRouter(prefix="/api")
+
+
+def _verify_admin_access(x_admin_key: str | None = Header(None, alias="X-Admin-Key")):
+    """Verify admin key if SIM_ADMIN_KEY is configured in the environment."""
+    required_key = os.environ.get("SIM_ADMIN_KEY")
+    if required_key and x_admin_key != required_key:
+        raise HTTPException(status_code=403, detail="Unauthorized: invalid or missing X-Admin-Key header")
 
 
 def _bad_tracker(e: KeyError) -> HTTPException:
@@ -48,6 +55,12 @@ def scenario_preview(payload: dict):
     import gc
     params = {**payload}
     params.setdefault("seed", 7)
+    frames = int(params.get("frames", 120))
+    if frames < 1 or frames > 600:
+        raise HTTPException(status_code=400, detail="frames must be between 1 and 600")
+    num_objects = int(params.get("num_objects", 6))
+    if num_objects < 1 or num_objects > 50:
+        raise HTTPException(status_code=400, detail="num_objects must be between 1 and 50")
     try:
         sc = Scenario(params)
     except Exception as e:  # noqa: BLE001
@@ -72,12 +85,25 @@ def scenario_preview(payload: dict):
 @router.post("/simulations")
 def start_simulation(payload: dict):
     """payload: {scenario: {...}, detection: {...}, trackers: [{tracker_id, params}]}"""
+    scenario_cfg = payload.get("scenario") or {}
+    frames = int(scenario_cfg.get("frames", 120))
+    if frames < 1 or frames > 600:
+        raise HTTPException(status_code=400, detail="frames must be between 1 and 600")
+    num_objects = int(scenario_cfg.get("num_objects", 6))
+    if num_objects < 1 or num_objects > 50:
+        raise HTTPException(status_code=400, detail="num_objects must be between 1 and 50")
+
+    raw_trackers = payload.get("trackers", [])
+    if not raw_trackers:
+        raise HTTPException(status_code=400, detail="At least one tracker must be specified")
+    if len(raw_trackers) > 18:
+        raise HTTPException(status_code=400, detail="Cannot benchmark more than 18 trackers simultaneously")
+
     # Merge, don't replace: a client that sends only `conf` must still get the
     # rest of the detector knobs rather than silently falling back to whatever
     # `SimDetector` happens to hardcode.
     detection_params = {**DETECTION_DEFAULTS, **(payload.get("detection") or {})}
     payload["detection"] = detection_params
-    raw_trackers = payload.get("trackers", [])
     specs = []
     for tr in raw_trackers:
         tid = tr.get("tracker_id")
@@ -101,60 +127,6 @@ def _run_simulation_job(progress, payload):
                             progress=progress, out_dir=str(config.JOBS_DIR),
                             job_id=progress.jid)
     return result
-
-
-@router.post("/real/upload")
-async def real_upload(file: UploadFile):
-    ext = os.path.splitext(file.filename or "video.mp4")[1] or ".mp4"
-    name = f"{config.new_id()}{ext}"
-    path = config.UPLOADS_DIR / name
-    data = await file.read()
-    if not data:
-        raise HTTPException(status_code=400, detail="Empty file")
-    path.write_bytes(data)
-    return {"upload_id": path.name, "size": len(data)}
-
-
-@router.post("/real/jobs")
-def start_real_job(payload: dict):
-    upload_id = payload.get("upload_id")
-    if not upload_id:
-        raise HTTPException(status_code=400, detail="upload_id required")
-    if not (config.UPLOADS_DIR / upload_id).exists():
-        raise HTTPException(status_code=400, detail="upload not found; re-upload")
-    tid = payload.get("tracker_id")
-    try:
-        meta = get_tracker(tid)
-    except KeyError as e:
-        raise _bad_tracker(e) from e
-    if meta["mode"] == "single":
-        raise HTTPException(
-            status_code=400,
-            detail=(f"'{meta['name']}' is a single-object follower and cannot be run over a whole "
-                    f"video. Pick a multi-object tracker for real mode."))
-    params = {p["key"]: p["default"] for p in meta["params"]}
-    params.update(payload.get("params") or {})
-    det_params = {p["key"]: p["default"] for p in DETECTOR_PARAMS}
-    det_params.update(payload.get("det_params") or {})
-
-    def _run(progress, pl):
-        import cv2
-        from app.core.real import run_real
-        from ultralytics import YOLO
-        src = config.UPLOADS_DIR / pl["upload_id"]
-        cap = cv2.VideoCapture(str(src))
-        if not cap.isOpened():
-            raise RuntimeError("Could not open the uploaded video")
-        progress("Loading detector", 0.05)
-        model = YOLO(pl["det_params"]["model"] if "model" in pl["det_params"] else "yolov8n")
-        out_dir = str(config.VIDEOS_DIR)
-        result = run_real(model, cap, pl["tid"], pl["params"], pl["det_params"],
-                          progress=progress, out_dir=out_dir, job_id=progress.jid)
-        return {"results": [result]}
-
-    jid = jobs.start_job("real", dict(tid=tid, upload_id=upload_id, params=params, det_params=det_params),
-                         _run)
-    return {"job_id": jid}
 
 
 @router.get("/jobs/{jid}")
@@ -270,10 +242,10 @@ def get_log_lines(
     }
 
 
-@router.post("/cleanup")
-@router.delete("/cleanup")
-@router.post("/clear")
-@router.delete("/clear")
+@router.post("/cleanup", dependencies=[Depends(_verify_admin_access)])
+@router.delete("/cleanup", dependencies=[Depends(_verify_admin_access)])
+@router.post("/clear", dependencies=[Depends(_verify_admin_access)])
+@router.delete("/clear", dependencies=[Depends(_verify_admin_access)])
 def cleanup_data_files(
     include_uploads: bool = False,
     include_jobs: bool = True,

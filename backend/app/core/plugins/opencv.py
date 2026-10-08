@@ -246,15 +246,15 @@ class NanoPlugin(_OpenCvSinglePlugin):
             "name": "Nano (single-object)",
             "engine": cls.engine,
             "mode": cls.mode,
-            "tagline": "OpenCV's tiny neural follower.",
+            "tagline": "OpenCV's tiny neural follower (requires external ONNX weights).",
             "description": (
                 "A lightweight neural single-object tracker shipped with recent OpenCV. A compact "
                 "network trained to re-locate whatever box you hand it -- much harder to shake than "
                 "the old correlation filters, at a still tiny cost. Mirrors how real products track "
-                "'this one person' on a phone."
+                "'this one person' on a phone. Requires external ONNX model weights."
             ),
             "strengths": ["Neural robustness beats classic filters", "Good for fast, well-textured objects"],
-            "failure_modes": ["Very long / total occlusion still loses the target", "First-use downloads model files"],
+            "failure_modes": ["Very long / total occlusion still loses the target", "Requires external ONNX model weights (disabled if offline)"],
             "params": [
                 _d("max_age", "Lost-track memory", INT, 60, "Frames it keeps re-searching after confidence collapse.", "", 1, 180, 1, "frames"),
             ],
@@ -272,15 +272,15 @@ class VitPlugin(_OpenCvSinglePlugin):
             "name": "ViT (single-object)",
             "engine": cls.engine,
             "mode": cls.mode,
-            "tagline": "Vision-Transformer single-object tracker.",
+            "tagline": "Vision-Transformer single-object tracker (requires external weights).",
             "description": (
                 "OpenCV's newest single-object tracker: a Vision Transformer that re-locates the target "
                 "with attention over the whole frame. State-of-the-art for single-object follow on "
                 "tricky scenes, showing how deep 'everything-to-everything' matching beats local "
-                "patches. First run downloads the ViT weights."
+                "patches. Requires external model weights on first run."
             ),
             "strengths": ["Best single-object robustness here", "Attention-based long-range re-search"],
-            "failure_modes": ["Slowest single-object option", "Weights download + VRAM on first run"],
+            "failure_modes": ["Slowest single-object option", "Requires external model weights (disabled if offline)"],
             "params": [
                 _d("max_age", "Lost-track memory", INT, 90, "Frames it keeps re-searching.", "", 1, 240, 1, "frames"),
             ],
@@ -298,15 +298,15 @@ class DaSiamRpnPlugin(_OpenCvSinglePlugin):
             "name": "DaSiamRPN (single-object)",
             "engine": cls.engine,
             "mode": cls.mode,
-            "tagline": "Siamese tracker — 'find where this patch went' via a neural template matcher.",
+            "tagline": "Siamese tracker (requires external ONNX model).",
             "description": (
                 "A siamese-region-proposal single-object tracker. It memorises a template of the object "
                 "and uses a tiny RPN head to regress 'where is this template now' each frame. The "
                 "neural ancestor of the appearance-matching idea that modern MOT trackers (BoT-SORT "
-                "ReID) reuse at scale. First run downloads the ONNX model."
+                "ReID) reuse at scale. Requires external ONNX model weights."
             ),
             "strengths": ["Refreshes templates → adapts to change", "Solid under partial occlusion"],
-            "failure_modes": ["Full occlusion → template gets stale", "Needs model files on first use"],
+            "failure_modes": ["Full occlusion → template gets stale", "Requires external ONNX model files (disabled if offline)"],
             "params": [
                 _d("max_age", "Lost-track memory", INT, 40, "Frames it keeps searching after confidence loss.", "", 1, 120, 1, "frames"),
             ],
