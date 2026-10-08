@@ -60,7 +60,8 @@ class SimDetector:
             h = w * self.rng.uniform(0.8, 1.2)
             x = self.rng.uniform(0, W - w)
             y = self.rng.uniform(0, H - h)
-            dets.append([x, y, x + w, y + h, self.rng.uniform(self.conf + 0.05, 0.7)])
+            low_score = min(float(self.conf + 0.05), 0.68)
+            dets.append([x, y, x + w, y + h, self.rng.uniform(low_score, max(low_score + 0.01, 0.70))])
         return np.array(dets) if dets else np.zeros((0, 5))
 
 

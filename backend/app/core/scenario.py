@@ -97,7 +97,7 @@ class Scenario:
                 lane = 0.2 + 0.2 * (i % 3) + 0.06 * rng.uniform(-1, 1)
                 x0 = W * (0.1 + 0.06 * i)
                 x1 = W * (0.9 - 0.06 * i)
-                amp = H * (0.02 + 0.03 * rng.random())
+                amp = 0.02 + 0.03 * rng.random()
                 k = 1 + 0.5 * i
                 ph = rng.uniform(0, math.tau)
                 arr = np.zeros((T, 2))
@@ -112,7 +112,7 @@ class Scenario:
             lane = 0.25 + 0.17 * idx
             x0 = W * (0.12 + 0.04 * idx)
             x1 = W * (0.88 - 0.04 * idx)
-            amp = H * 0.02
+            amp = 0.02
             k = 1.0 + 0.3 * idx
             arr = np.zeros((T, 2))
             for t in range(T):

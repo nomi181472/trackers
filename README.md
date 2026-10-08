@@ -12,7 +12,7 @@
 **A visual & programmatic stress-testing simulator to uncover *why*, *when*, and *how* Computer Vision trackers fail.**  
 Stop debugging tracker regressions in production. Benchmark **18 tracking algorithms** under mathematically controlled perturbations (severe occlusions, path crossing, camera jitter, motion blur, and visual look-alikes).
 
-[Why This Matters for Your Apps](#-why-this-helps-in-your-industry-applications) • [Interactive Showcase](#-multi-object-tracking-in-action) • [Benchmark Trade-Offs](#-deep-dive-benchmarks--trade-off-analysis) • [Supported Trackers (18)](#-tracker-catalog--algorithm-architectures-18) • [API Guide](#-rest-api-reference) • [References & Citations](#-references--citations)
+[Why This Matters for Your Apps](#-why-this-helps-in-your-industry-applications) • [Interactive Showcase](#-multi-object-tracking-in-action) • [Benchmark Trade-Offs](#-deep-dive-benchmarks--trade-off-analysis) • [Supported Trackers (18)](#-tracker-catalog--algorithm-architectures-18) • [Adding Custom Trackers](#-adding-a-custom-tracker-integration) • [API Guide](#-rest-api-reference) • [References & Citations](#-references--citations)
 
 </div>
 
@@ -237,13 +237,15 @@ The backend exposes an asynchronous REST API documented with interactive Swagger
 │   ├── ui_dashboard_benchmark.png          # Full Next.js results UI dashboard preview
 │   ├── ui_scenario_controls.png            # Interactive scenario physics controls
 │   └── *_6obj_stress.gif                   # Individual 6-object evaluation GIFs per tracker
+```
 ├── backend/
 │   ├── app/
 │   │   ├── main.py                         # FastAPI application entrypoint & middleware
 │   │   ├── config.py                       # Directory paths & system configurations
 │   │   ├── router/api.py                   # REST API routing
 │   │   └── core/
-│   │       ├── registry.py                 # 18 tracker schemas & parameter declarations
+│   │       ├── plugins/                    # Modular tracker plugin registry (Base, Custom, Standalone, SOT)
+│   │       ├── registry.py                 # Hyperparameters & plugin registry accessors
 │   │       ├── scenario.py                 # Synthetic physics & perturbation generator
 │   │       ├── runner.py                   # Multi-tracker simulation runner & video renderer
 │   │       ├── metrics.py                  # CLEAR MOT, IDF1, and frame event detection
@@ -254,6 +256,159 @@ The backend exposes an asynchronous REST API documented with interactive Swagger
 ├── run.sh                                  # Concurrency runner with port management
 └── stop.sh                                 # Clean shutdown & teardown script
 ```
+
+---
+
+## 🧩 Adding a Custom Tracker Integration
+
+The simulator uses a **modular plugin architecture** based on `Engine` and `TrackerPlugin`. Every tracker is a completely self-contained class that carries its own metadata, configurable hyperparameter schema, and runtime execution loop. 
+
+Once registered, your custom tracker automatically:
+1. Appears in `GET /api/trackers` with dynamic hyperparameter controls in the frontend UI.
+2. Participates in side-by-side benchmark runs receiving identical synthetic detection streams.
+3. Gets evaluated across MOTA, MOTP, IDF1, ID switches, fragments, and automated root-cause diagnostics.
+
+### 📐 Integration Architecture & Execution Flow
+
+```mermaid
+flowchart TD
+    subgraph S1["1. Implement Tracker Engine"]
+        A["Subclass Engine"] --> B["Implement update(dets, img)"]
+        B --> C["Return TrackerState(active=[Track], lost_now=[Track])"]
+    end
+
+    subgraph S2["2. Define Plugin Metadata"]
+        D["Subclass TrackerPlugin"] --> E["Set id, engine, mode"]
+        E --> F["Implement meta() with hyperparameter schema"]
+        F --> G["Implement build(params, fps, device)"]
+    end
+
+    subgraph S3["3. Register Plugin"]
+        H["Decorate with @register"] --> I["Import module in app.core.plugins.__init__.py"]
+    end
+
+    subgraph S4["4. Automatic System Integration"]
+        I --> J["FastAPI Catalog: GET /api/trackers"]
+        I --> K["Frontend UI: Hyperparameter Controls & Selector"]
+        I --> L["Simulation Runner: Side-by-Side Benchmark & Metrics"]
+    end
+
+    S1 --> S2 --> S3 --> S4
+```
+
+---
+
+### 📝 Step-by-Step Implementation Guide
+
+#### Step 1: Implement the Tracker `Engine`
+Create your tracking algorithm class inheriting from [`Engine`](file:///home/noman/projects/trackers/backend/app/core/plugins/base.py#L15-L35). The only required method is `update(dets, img=None)`:
+
+- **Input `dets`**: NumPy array of shape `(N, 6)` or `(N, 5)` representing `[x1, y1, x2, y2, score, class_id]`.
+- **Input `img`**: Optional BGR video frame `(H, W, 3)` (available for visual appearance or ReID models).
+- **Output**: Returns a [`TrackerState`](file:///home/noman/projects/trackers/backend/app/core/trackers.py#L37-L40) containing:
+  - `active`: List of [`Track`](file:///home/noman/projects/trackers/backend/app/core/trackers.py#L28-L34) objects `[Track(id=int, box=[x1, y1, x2, y2], score=float, cls=int)]`.
+  - `lost_now`: List of [`Track`](file:///home/noman/projects/trackers/backend/app/core/trackers.py#L28-L34) objects that were confirmed active but dropped in this specific frame.
+
+```python
+# backend/app/core/plugins/my_custom_tracker.py
+import numpy as np
+from app.core.plugins.base import Engine
+from app.core.trackers import Track, TrackerState
+
+class MyCustomEngine(Engine):
+    def __init__(self, iou_thresh: float = 0.3, max_age: int = 30):
+        self.iou_thresh = iou_thresh
+        self.max_age = max_age
+        self.tracks = {}
+        self.next_id = 1
+
+    def update(self, dets: np.ndarray, img: np.ndarray = None) -> TrackerState:
+        active_tracks = []
+        lost_tracks = []
+        
+        # 1. Predict track states (e.g. Kalman filter or motion velocity)
+        # 2. Compute cost matrix (IoU, Euclidean distance, or ReID feature cosine distance)
+        # 3. Associate detections with existing tracks (Hungarian matching / greedy)
+        # 4. Initialize new tracks for unmatched detections
+        # 5. Cull tracks exceeding max_age
+
+        for track_id, data in self.tracks.items():
+            active_tracks.append(
+                Track(id=track_id, box=data["box"], score=data["score"], cls=0)
+            )
+
+        return TrackerState(active=active_tracks, lost_now=lost_tracks)
+```
+
+#### Step 2: Define `TrackerPlugin` with Metadata & Hyperparameters
+Subclass [`TrackerPlugin`](file:///home/noman/projects/trackers/backend/app/core/plugins/base.py#L37-L63) and apply the `@register` decorator from [`app.core.plugins.registry`](file:///home/noman/projects/trackers/backend/app/core/plugins/registry.py#L53-L55):
+
+- Declare `id` (unique URL/API slug, e.g. `"my_tracker"`), `engine` (`"custom"`), and `mode` (`"multi"` or `"single"`).
+- Implement `meta()` to define UI descriptions, failure modes, and configurable parameters using `_d(...)`.
+- Implement `build(params, fps, device)` to instantiate your engine for a simulation run.
+
+```python
+from app.core.params import FLOAT, INT, _d
+from app.core.plugins.base import TrackerPlugin
+from app.core.plugins.registry import register
+
+@register
+class MyCustomTrackerPlugin(TrackerPlugin):
+    id = "my_custom_tracker"
+    engine = "custom"
+    mode = "multi"
+
+    @classmethod
+    def meta(cls) -> dict:
+        return {
+            "id": cls.id,
+            "name": "My Custom Tracker",
+            "engine": cls.engine,
+            "mode": cls.mode,
+            "tagline": "A novel association algorithm for robust trajectory estimation.",
+            "description": "Explains the underlying tracking mechanism and how association is performed.",
+            "strengths": ["High MOTA in dense clusters", "Low memory footprint"],
+            "failure_modes": ["Sudden camera shake", "Prolonged full occlusions"],
+            "params": [
+                _d(
+                    "iou_thresh", "Match IoU", FLOAT, 0.30,
+                    "Minimum spatial overlap to reuse an existing identity.",
+                    "Higher values prevent ID swaps but may drop fast movers.",
+                    0.05, 0.95, 0.05,
+                ),
+                _d(
+                    "max_age", "Track Memory", INT, 30,
+                    "Number of frames to coast a lost track before terminating it.",
+                    "Higher values withstand longer occlusions.",
+                    1, 100, 1, "frames",
+                ),
+            ],
+        }
+
+    def build(self, params: dict, fps: int, device: str = "cpu") -> MyCustomEngine:
+        return MyCustomEngine(
+            iou_thresh=float(params.get("iou_thresh", 0.30)),
+            max_age=int(params.get("max_age", 30)),
+        )
+```
+
+#### Step 3: Register in Plugin Package
+Expose your new plugin file by adding an import statement in [`backend/app/core/plugins/__init__.py`](file:///home/noman/projects/trackers/backend/app/core/plugins/__init__.py#L15):
+
+```python
+# backend/app/core/plugins/__init__.py
+from app.core.plugins import custom, ultralytics, opencv, vector_embed, my_custom_tracker
+```
+
+#### Step 4: Verify Integration
+Run the automated test suite to confirm your plugin registers cleanly and satisfies the simulator contracts:
+
+```bash
+cd backend
+pytest tests/test_registry.py tests/test_runner.py -v
+```
+
+Your custom tracker is now fully integrated into the simulation engine, REST API, and Next.js frontend UI!
 
 ---
 
