@@ -100,3 +100,29 @@ def test_vector_embed_box_smoothed():
     dets2 = np.array([[12, 12, 52, 52, 0.9, 0]])
     state2 = engine.update(dets2)
     assert len(state2.active) == 1
+
+
+def test_detection_dto_and_compute_fallback():
+    from app.core.trackers import Detection, get_compute_device
+    det = Detection.from_array([10.0, 20.0, 30.0, 40.0, 0.85, 1])
+    assert det.box == [10.0, 20.0, 30.0, 40.0]
+    assert det.score == 0.85
+    assert det.cls == 1
+    assert det.to_list() == [10.0, 20.0, 30.0, 40.0, 0.85, 1.0]
+
+    # CPU/Auto fallback should never raise exception even without torch/cuda
+    assert get_compute_device("cpu") == "cpu"
+    assert get_compute_device("cuda") in ("cuda", "cpu")
+    assert get_compute_device(None) == "cpu"
+
+
+def test_ocsort_observation_pruning_memory_retention():
+    from app.core.trackers_standalone.oc_sort import OCSortTrack
+    track = OCSortTrack(np.array([100, 100, 20, 20]), 0.9, 0, delta_t=3)
+    # Simulate 200 frames of updates
+    for f in range(200):
+        track._record_observation(np.array([100 + f, 100 + f, 120 + f, 120 + f], dtype=np.float32), frame_id=f)
+    # Ensure observations dictionary does not grow unboundedly
+    assert len(track.observations) <= 70
+    assert 0 not in track.observations  # Frame 0 should have been pruned
+

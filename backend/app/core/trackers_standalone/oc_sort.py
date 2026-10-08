@@ -55,6 +55,12 @@ class OCSortTrack(STrack):
             cy_prev = (prev_obs[1] + prev_obs[3]) / 2
             self.velocity = np.array([cx_curr - cx_prev, cy_curr - cy_prev], dtype=np.float32)
 
+        # Bound memory retention: keep only observations within active delta and buffer window
+        cutoff = frame_id - max(eff_delta * 4, 60)
+        stale_keys = [fid for fid in self.observations if fid < cutoff]
+        for fid in stale_keys:
+            del self.observations[fid]
+
 
 class OCSORT(BYTETracker):
     def __init__(self, args, frame_rate: int = 30):

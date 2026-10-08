@@ -1,21 +1,47 @@
 .venv
 node_modules
 .next
-.pt
 /data
-
-# Ignore generated job result files
-backend/data/jobs/**/*.mp4
-backend/data/jobs/**/*.jpg
-backend/data/scenarios/*.mp4
-
-# Ignore Python bytecode
-*.pyc
-__pycache__/
-
-# Ignore MP4 files
-*.mp4
 .kilo/
 backend/data/
+
+# Model weights & engines
+*.pt
+*.pth
+*.onnx
+*.engine
+*.weights
+*.tflite
+*.bin
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Generated media & videos
+*.mp4
+*.webm
+*.avi
+*.mkv
+*.mov
+*.jpg
+*.jpeg
+*.png
+!assets/**/*.png
+!demos.gif
+backend/data/jobs/**/*
+backend/data/scenarios/**/*
+backend/data/videos/**/*
+backend/data/uploads/**/*
+
+# Python & runtime caches
+*.pyc
+__pycache__/
+.pytest_cache/
+*.log
 hf
 hf.pub
+

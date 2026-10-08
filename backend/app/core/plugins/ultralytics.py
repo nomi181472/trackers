@@ -83,10 +83,14 @@ class UltralyticsEngine(Engine):
         self.reid = bool(getattr(self.tracker, "with_reid", False))
 
     def update(self, dets, img):
-        dets = np.asarray(dets, dtype=np.float64)
+        from app.core.trackers import Detection
+        if isinstance(dets, list) and dets and isinstance(dets[0], Detection):
+            dets = np.asarray([d.to_list() for d in dets], dtype=np.float64)
+        else:
+            dets = np.asarray(dets, dtype=np.float64)
         if dets.ndim == 1 and len(dets):
             dets = dets[None]
-        if dets.shape[1] < 5:
+        if dets.ndim == 2 and dets.shape[1] < 5:
             dets = np.pad(dets, ((0, 0), (0, 5 - dets.shape[1])))
         out = self.tracker.update(dets, np.ascontiguousarray(img) if img is not None else None)
         rows = np.asarray(out, dtype=np.float64).reshape(-1, 8)

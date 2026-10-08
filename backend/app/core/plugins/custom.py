@@ -82,6 +82,13 @@ class CustomTrackerBase(Engine):
         self._ids = itertools.count(0)
         self.tracks: dict[int, dict] = {}
 
+    @staticmethod
+    def _normalize_dets(dets):
+        from app.core.trackers import Detection
+        if isinstance(dets, list) and dets and isinstance(dets[0], Detection):
+            return np.asarray([d.to_list() for d in dets], dtype=np.float64)
+        return np.asarray(dets, dtype=np.float64)
+
     def _fresh(self, box, score, cls) -> int:
         tid = next(self._ids)
         self.tracks[tid] = {"box": list(box), "age": 0, "kind": "active", "score": float(score), "cls": int(cls)}
@@ -116,7 +123,7 @@ class GreedyIoUTracker(CustomTrackerBase):
         self.keep_last = bool(params.get("keep_last_pos", False))
 
     def update(self, dets, img=None):
-        dets = np.asarray(dets, dtype=np.float64)
+        dets = self._normalize_dets(dets)
         rows = [d for d in dets] if len(dets) else []
         remaining = list(range(len(rows)))
         for k in self.tracks:
@@ -204,7 +211,7 @@ class SortTracker(CustomTrackerBase):
         return TrackerState(active=active, lost_now=lost)
 
     def update(self, dets, img=None):
-        dets = np.asarray(dets, dtype=np.float64)
+        dets = self._normalize_dets(dets)
         rows = [d for d in dets] if len(dets) else []
 
         for t in self.tracks.values():
@@ -265,7 +272,7 @@ class CentroidTracker(CustomTrackerBase):
         self.max_age = int(params.get("max_age", 5))
 
     def update(self, dets, img=None):
-        dets = np.asarray(dets, dtype=np.float64)
+        dets = self._normalize_dets(dets)
         rows = [d for d in dets] if len(dets) else []
         remaining = list(range(len(rows)))
         for k in self.tracks:

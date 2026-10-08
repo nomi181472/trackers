@@ -124,38 +124,47 @@ def write_video(frames, path: str, fps: int):
     h, w = first_frame.shape[0], first_frame.shape[1]
     p = Path(path)
     webm_path = str(p.with_suffix(".webm"))
+    from app.core.trackers import open_video_writer
+
+    started = None
+    frame_list = []
+    need_frames = (p.suffix == ".mp4")
 
     # 1. Always generate WebM with VP80 (guaranteed browser playback)
-    v_webm = cv2.VideoWriter(webm_path, cv2.VideoWriter_fourcc(*"VP80"), fps, (w, h))
-    if not v_webm.isOpened():
-        v_webm = cv2.VideoWriter(webm_path, cv2.VideoWriter_fourcc(*"VP90"), fps, (w, h))
-
-    started = "vp8(webm)" if v_webm.isOpened() else None
-    frame_list = []
-    need_frames = (p.suffix == ".mp4") or (not v_webm.isOpened())
-
-    if v_webm.isOpened():
-        v_webm.write(first_frame)
-        if need_frames:
-            frame_list.append(first_frame)
-        for f in frames_iter:
-            v_webm.write(f)
+    with open_video_writer(webm_path, cv2.VideoWriter_fourcc(*"VP80"), fps, (w, h)) as v_webm:
+        if not v_webm.isOpened():
+            with open_video_writer(webm_path, cv2.VideoWriter_fourcc(*"VP90"), fps, (w, h)) as v_webm_alt:
+                if v_webm_alt.isOpened():
+                    started = "vp8(webm)"
+                    v_webm_alt.write(first_frame)
+                    if need_frames:
+                        frame_list.append(first_frame)
+                    for f in frames_iter:
+                        v_webm_alt.write(f)
+                        if need_frames:
+                            frame_list.append(f)
+                else:
+                    frame_list = [first_frame] + list(frames_iter)
+        else:
+            started = "vp8(webm)"
+            v_webm.write(first_frame)
             if need_frames:
-                frame_list.append(f)
-        v_webm.release()
-    else:
-        frame_list = [first_frame] + list(frames_iter)
+                frame_list.append(first_frame)
+            for f in frames_iter:
+                v_webm.write(f)
+                if need_frames:
+                    frame_list.append(f)
 
     # 2. If target path is .mp4, also write .mp4
     if p.suffix == ".mp4":
         ffmpeg = get_ffmpeg_exe()
         if ffmpeg:
             tmp = path + ".raw.mp4"
-            v = cv2.VideoWriter(tmp, cv2.VideoWriter_fourcc(*"mp4v"), fps, (w, h))
-            if v.isOpened():
-                for f in frame_list:
-                    v.write(f)
-                v.release()
+            with open_video_writer(tmp, cv2.VideoWriter_fourcc(*"mp4v"), fps, (w, h)) as v:
+                if v.isOpened():
+                    for f in frame_list:
+                        v.write(f)
+            if os.path.exists(tmp):
                 code = os.system(
                     f'"{ffmpeg}" -y -loglevel error -i "{tmp}" -c:v libx264 -pix_fmt yuv420p -an "{path}"')
                 if code == 0:
@@ -203,8 +212,10 @@ def _attach_preview(scenario, job_id: str):
 
 
 def run_simulation(scenario, specs: list[dict], detection_params: dict,
-                   progress=None, out_dir: str = "data/jobs", job_id: str = "local") -> dict:
+                   progress=None, out_dir: str | None = None, job_id: str = "local") -> dict:
     """specs: [{"tracker_id":..., "params": {...}}]"""
+    from app import config
+    out_dir = str(out_dir) if out_dir is not None else str(config.JOBS_DIR)
     os.makedirs(out_dir, exist_ok=True)
     T = scenario.meta["frames"]
 

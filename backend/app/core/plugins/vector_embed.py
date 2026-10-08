@@ -102,7 +102,11 @@ class VectorEmbedderEngine(Engine):
         return tid
 
     def update(self, dets, img=None) -> TrackerState:
-        dets = np.asarray(dets, dtype=np.float64) if len(dets) else np.zeros((0, 5))
+        from app.core.trackers import Detection
+        if isinstance(dets, list) and dets and isinstance(dets[0], Detection):
+            dets = np.asarray([d.to_list() for d in dets], dtype=np.float64)
+        else:
+            dets = np.asarray(dets, dtype=np.float64) if len(dets) else np.zeros((0, 5))
 
         # 1. Kalman prediction for all existing tracks
         for tr in self.tracks.values():

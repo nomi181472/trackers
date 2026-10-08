@@ -57,4 +57,6 @@ def register(plugin: type[TrackerPlugin]) -> type[TrackerPlugin]:
 
 def build_engine(tid: str, params: dict, fps: int, device: str = "cpu") -> Engine:
     """The one entry point the simulator uses to get a running engine."""
-    return REGISTRY.get(tid)().build(params, fps, device)
+    from app.core.trackers import get_compute_device
+    safe_device = get_compute_device(device)
+    return REGISTRY.get(tid)().build(params, fps, safe_device)
