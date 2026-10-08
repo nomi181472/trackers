@@ -1,14 +1,4 @@
----
-title: Tracker Simulator Backend
-emoji: 🎯
-colorFrom: indigo
-colorTo: blue
-sdk: docker
-app_port: 7860
-pinned: false
----
-
-# 🎯 Tracker Failure Simulator
+# 🎯 Tracker Failure Simulator — Multi-Object Tracking (MOT) Diagnostic Lab
 
 <div align="center">
 
@@ -16,234 +6,236 @@ pinned: false
 [![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com/)
 [![Next.js](https://img.shields.io/badge/Next.js-15-black?style=for-the-badge&logo=next.js&logoColor=white)](https://nextjs.org/)
 [![React](https://img.shields.io/badge/React-19-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)](https://react.dev/)
+[![NumPy](https://img.shields.io/badge/NumPy-013243?style=for-the-badge&logo=numpy&logoColor=white)](https://numpy.org/)
 [![OpenCV](https://img.shields.io/badge/OpenCV-5C3EE8?style=for-the-badge&logo=opencv&logoColor=white)](https://opencv.org/)
-[![Ultralytics](https://img.shields.io/badge/Ultralytics-YOLO-00FFFF?style=for-the-badge)](https://github.com/ultralytics/ultralytics)
 
-**An interactive visual lab to discover *why* and *how* multi-object trackers fail.**  
-Stress-test **17 object trackers** against occlusion, crossing paths, motion blur, camera shake, and look-alikes. Inspect granular failure reports, ID switches, and side-by-side MOT benchmarks in real time.
+**A visual & programmatic stress-testing simulator to uncover *why*, *when*, and *how* Computer Vision trackers fail.**  
+Stop debugging tracker regressions in production. Benchmark **18 tracking algorithms** under mathematically controlled perturbations (severe occlusions, path crossing, camera jitter, motion blur, and visual look-alikes).
 
-[Quick Start](#-quick-start) • [Live Demo](#-demo) • [Supported Trackers](#-trackers-catalog-17) • [API Reference](#-api-endpoints) • [Teardown](#-stopping-the-services)
+[Why This Matters for Your Apps](#-why-this-helps-in-your-industry-applications) • [Interactive Showcase](#-multi-object-tracking-in-action) • [Technical Architecture](#-technical-architecture--isolation-principles) • [Benchmark Trade-Offs](#-deep-dive-benchmarks--trade-off-analysis) • [Supported Trackers (18)](#-tracker-catalog--algorithm-architectures-18) • [API Guide](#-rest-api-reference)
 
 </div>
 
 ---
 
-## 🎬 Demo
+## 💡 Why This Helps In Your Industry Applications
 
-### ⚡ Side-by-Side Tracker Evaluation
-Watch how different tracking paradigms (**ByteTrack**, **BoT-SORT**, **Greedy IoU**, and **Centroid**) behave under challenging occlusions:
+Deploying object trackers to real-world cameras (surveillance, autonomous logistics, retail analytics, sports telemetry, robotics) usually leads to costly production surprises:
+
+| Production Nightmare | Real-World Scenario | Why The Simulator Saves Weeks of Work |
+|---|---|---|
+| **Identity Swaps (IDSW)** | Two warehouse workers cross paths or customer paths intersect in a retail aisle. Tracking IDs swap, corrupting trajectory analytics. | **Isolate Spatial vs. Appearance Failures**: Pinpoint whether the tracker is swapping because of Kalman filter prediction error, IoU ambiguity, or weak ReID distance gating. |
+| **Occlusion Dropouts** | Forklifts passing behind structural pillars; pedestrians moving behind trees or bus shelters. | **Quantify Track Coasting Limits**: Stress-test `max_age`, `track_buffer`, and low-confidence byte thresholds under exact occlusion wall widths (e.g. 20px to 80px). |
+| **Camera Shake & Vibration** | Wind-induced PTZ pole sway, drone footage, or vehicle-mounted cameras that corrupt optical flow / velocity vectors. | **Evaluate Global Motion Compensation (GMC)**: Test whether affine camera compensation (BoT-SORT) is genuinely worth the 3x latency penalty over pure IoU/Kalman (ByteTrack/SORT). |
+| **Low-Confidence Blur / Dropped Frames** | Camera sensor underexposure, rapid motion blur, or dropped RTSP packets. | **Tune Second-Chance Association**: Directly benchmark how the BYTE two-stage association strategy salvages weak detections where greedy trackers immediately drop tracks. |
+| **Edge Hardware Constraints** | Jetson / Raspberry Pi / Edge TPU cannot run heavy neural ReID models at 60 FPS. | **Find the Pareto Frontier**: Directly measure association throughput (FPS) and per-step latency (sub-millisecond) to pick the exact lightest tracker meeting your SLA. |
+
+---
+
+## 🎬 Multi-Object Tracking in Action
+
+### ⚡ 6-Way Side-by-Side Stress Test Grid
+All trackers evaluated below simultaneously process the **exact same synthetic multi-object detection stream** (6 interacting objects, dynamic crossings, full occlusion wall, camera vibration, and detector bounding box jitter):
 
 <div align="center">
-  <img src="assets/demos.gif" alt="Tracker Failure Simulator Demo" width="100%" style="border-radius: 8px; border: 1px solid #334155;" />
+  <img src="demos/grid_6way_trackers_stress.gif" alt="6-Way Multi-Object Tracker Stress Grid" width="100%" style="border-radius: 8px; border: 1px solid #334155;" />
+  <p><em>Row 1: ByteTrack (BYTE association) • BoT-SORT (ReID + GMC) • OC-SORT (Observation momentum)<br/>Row 2: DeepOCSORT (Deep ReID) • EmbedSORT (Cosine Appearance) • SORT (Kalman + Hungarian)</em></p>
 </div>
 
 <br/>
 
-### 🖥️ Lab Dashboard & Report Card
-Tune synthetic scene parameters, configure hyperparameter knobs with tooltips, and review automated natural-language report cards explaining every ID switch and fumble:
+### 🎯 4-Way Focused Paradigm Comparison
+Comparing the 4 most prominent tracker paradigms in modern Computer Vision:
 
 <div align="center">
-  <img src="assets/dashboard_results.png" alt="Tracker Simulator Dashboard & Results" width="100%" style="border-radius: 8px; border: 1px solid #334155; margin-bottom: 12px;" />
-  <p><em>Comprehensive multi-tracker performance reports, event timelines, and side-by-side MOTA comparisons.</em></p>
+  <img src="demos/grid_4way_tracker_benchmark.gif" alt="4-Way MOT Comparison" width="85%" style="border-radius: 8px; border: 1px solid #334155;" />
+</div>
+
+<br/>
+
+### 🖥️ Diagnostic Lab Dashboard & Automated Root-Cause Reports
+Inspect frame-by-frame event logs, radar charts, and automated natural-language diagnostic cards explaining the exact root cause of every ID switch:
+
+<div align="center">
+  <img src="demos/ui_dashboard_benchmark.png" alt="Tracker Simulator Dashboard & Results" width="100%" style="border-radius: 8px; border: 1px solid #334155; margin-bottom: 12px;" />
+  <p><em>Interactive MOT dashboard: MOTA/IDF1 metrics, per-frame event timeline with thumbnails, and plain-language diagnosis.</em></p>
 </div>
 
 <div align="center">
-  <img src="assets/snapshot.png" alt="Tracker Simulator Scenario Controls" width="100%" style="border-radius: 8px; border: 1px solid #334155;" />
-  <p><em>Interactive scenario generator: Crossing objects, occlusion wall, camera shake, motion blur, and detector noise.</em></p>
+  <img src="demos/ui_scenario_controls.png" alt="Scenario Generator Controls" width="100%" style="border-radius: 8px; border: 1px solid #334155;" />
+  <p><em>Configurable scenario physics: Object count, occlusion thickness, crossing trajectories, camera jitter, and detector noise.</em></p>
 </div>
 
 ---
 
-## ✨ Features
+## 📊 Deep-Dive Benchmarks & Trade-Off Analysis
 
-- **🎮 Dual Operation Modes**:
-  - **Synthetic Simulator** — Generate ground-truth physics scenes with deterministic seed reproducibility. Every track is graded precisely with ground-truth metrics.
-  - **Real Video Mode** — Upload any MP4 video; YOLO detects objects, you select the tracker, and the system highlights heuristic ID switches and trajectory losses.
-- **🌪️ Engineered Failure Scenarios**:
-  - **Occlusion Wall**: Objects disappear behind barriers of adjustable thickness.
-  - **Crossing Chaos**: Swap trajectories and evaluate ID swap vulnerabilities.
-  - **Camera Shake**: Random affine frame translations to test global motion compensation (GMC).
-  - **Motion Blur**: Gaussian blur kernels that degrade detector confidence.
-  - **Look-alikes**: Eliminate color variance to stress spatial/appearance association.
-- **📊 Scientific Metrics & Explainable Reports**:
-  - Full MOT evaluation: **MOTA**, **MOTP**, **IDF1**, **IDP**, **IDR**, **IDSW**, **False Positives**, **Misses**, **Latency (ms)**, and **FPS**.
-  - Natural-language diagnosis: Plain-language explanations of failure root causes with actionable parameter recommendations.
-  - Interactive multi-tracker comparison charts with trade-off analysis (Accuracy vs Latency vs Error Burden).
-  - Clickable event timeline with frame-accurate thumbnail previews and video seeking.
+### 1. MOTA vs. IDF1 & Identity Instability (ID Switches)
+Evaluated across **all 10 Multi-Object Tracking engines** on a high-stress 6-object scenario:
+
+<div align="center">
+  <img src="demos/all_trackers_tradeoff_benchmark.png" alt="All Trackers MOTA vs IDF1 Benchmark" width="100%" style="border-radius: 8px; border: 1px solid #334155;" />
+</div>
+
+#### Key Takeaways for Vision Engineers:
+1. **The Appearance Advantage (EmbedSORT & DeepOCSORT)**:
+   - When tracks cross paths or emerge from occlusions, spatial IoU alone suffers severe ID flipping (80+ IDSW).
+   - Trackers with appearance embeddings achieve up to **90.8% MOTA** and **63.3% IDF1**, slashing ID switches down to **29**.
+2. **The High-Speed Sweet Spot (ByteTrack)**:
+   - ByteTrack achieves an outstanding balance: **82.8% MOTA** at **2,640 FPS** association speed (0.38 ms/frame), making it the gold standard for high-throughput edge pipelines where heavy ReID models cannot run.
+3. **The SORT Legacy (SORT)**:
+   - Classic SORT remains remarkably fast (**5,700+ FPS**, 0.18 ms), but incurs higher misses (FN = 38) when objects temporarily drop below the single confidence threshold.
 
 ---
 
-## 📐 Evaluation Metrics & Mathematical Formulas
+### 2. Production Decision Matrix: Throughput vs. Identity Preservation
+Selecting the optimal tracker depends on whether your production pipeline is constrained by **FPS SLA** or **Identity Stability**:
 
-The simulator evaluates all trackers rigorously against frame-accurate ground truth without black-box dependencies.
+<div align="center">
+  <img src="demos/production_decision_matrix.png" alt="Production Decision Matrix: Throughput vs IDF1" width="100%" style="border-radius: 8px; border: 1px solid #334155;" />
+</div>
+
+| Production Tier | Recommended Trackers | Target Industry Use Cases | Latency / FPS |
+|---|---|---|---|
+| **Ultra-Low Latency Edge** | `greedy_iou`, `centroid`, `sort` | Embedded microcontrollers, edge IPCs, high-FPS sports ball tracking (120+ FPS cameras). | **< 0.20 ms** (> 5,000 FPS) |
+| **Balanced Edge Real-Time** | `bytetrack`, `tracktrack`, `fasttrack` | Smart city traffic cameras, drone navigation, retail people counters, security PTZ tracking. | **0.35 – 0.50 ms** (~2,500 FPS) |
+| **High Identity Preservation** | `embed_sort`, `deepocsort`, `ocsort`, `botsort` | Long-term customer journey analytics, multi-camera re-identification, automated sports player tracking. | **0.80 – 1.40 ms** (700 – 1,200 FPS) |
+
+---
+
+## 🤖 Tracker Catalog & Algorithm Architectures (18)
+
+The simulator implements and bundles **18 tracking algorithms**:
+
+### Multi-Object Tracking (MOT) Engines (10)
+
+| Tracker ID | Algorithm Architecture | Association Strategy | Motion Model | Primary Advantage in Production |
+|---|---|---|---|---|
+| `bytetrack` | ByteTrack | Two-stage association (High + Low confidence detections) | Kalman Filter (Constant Velocity) | Recovers occluded & blurred objects without ghost tracks. |
+| `botsort` | BoT-SORT | Hungarian matching + Camera Motion Compensation (GMC) + ReID | Kalman Filter + Camera Affine | Robust against shaking/moving camera platforms (drones, robotics). |
+| `ocsort` | OC-SORT | Observation-Centric Momentum + OICA | Direction-consistent Kalman | Resolves non-linear trajectory recovery after long occlusions. |
+| `deepocsort` | Deep OC-SORT | OC-SORT + Deep ReID Feature Distance | Kalman + Deep Appearance | High IDF1 in dense crowds with visual look-alikes. |
+| `embed_sort` | EmbedSORT | Cosine similarity ReID + Hungarian matching | Kalman Filter | Preserves identities across complex multi-object trajectory crossovers. |
+| `sort` | SORT (Classic) | Bipartite Hungarian matching on IoU cost matrix | Kalman Filter | Minimal compute overhead, deterministic, pure NumPy baseline. |
+| `fasttrack` | FastTrack | Fast greedy spatial association with velocity heuristics | Linear extrapolator | Low memory footprint for micro-edge compute. |
+| `tracktrack` | TrackTrack | Standalone multi-stage spatial tracker | Velocity-gated Kalman | Pure NumPy implementation without external dependencies. |
+| `greedy_iou` | Greedy IoU | Argmax IoU greedy matching | None (Frame-to-frame) | Baseline comparison: reveals exact value of Kalman filtering. |
+| `centroid` | Centroid Tracker | Euclidean distance nearest-neighbor assignment | Centroid displacement | Ultra-light baseline for simple, non-overlapping objects. |
+
+### Single-Object Tracking (SOT) Trackers (8)
+
+For point-to-point target following and region tracking:
+* `kcf` (Kernelized Correlation Filters)
+* `csrt` (Channel and Spatial Reliability Tracking)
+* `mosse` (Minimum Output Sum of Squared Error — ultra-fast)
+* `mil` (Multiple Instance Learning)
+* `medianflow` (Forward-Backward optical flow error tracking)
+* `nano` (NanoTrack lightweight neural tracker)
+* `vit` (Vision Transformer based tracker)
+* `dasiamrpn` (Distractor-aware Siamese Region Proposal Network)
+
+---
+
+## 🔬 Mathematical Evaluation Metrics
+
+The simulator benchmarks all trackers against mathematically exact ground truth without external black boxes:
 
 ### 1. MOTA (Multiple Object Tracking Accuracy)
-Measures the overall tracking coverage and detection accuracy across all frames:
-
+Quantifies overall detection accuracy, false alarms, and identity stability:
 $$\text{MOTA} = 1 - \frac{\sum_{t} (\text{FP}_t + \text{FN}_t + \text{IDSW}_t)}{\sum_{t} \text{GT}_t}$$
 
-* **$\text{FP}_t$ (False Positives / Ghosts)**: Detections or tracks created by the tracker where no real object exists.
-* **$\text{FN}_t$ (False Negatives / Misses)**: Ground-truth objects that the tracker failed to detect or track.
-* **$\text{IDSW}_t$ (ID Switches)**: Times an active track identity swapped to a different object.
-* **$\text{GT}_t$**: Total visible ground-truth objects at frame $t$.
-
----
-
 ### 2. MOTP (Multiple Object Tracking Precision)
-Measures the spatial bounding box overlap precision between matched tracks and ground truth:
-
+Measures the spatial bounding box IoU alignment precision between tracker predictions and ground truth:
 $$\text{MOTP} = \frac{\sum_{t, i} \text{IoU}(b_{t, i}, g_{t, i})}{\sum_{t} |M_t|}$$
 
-Where $\text{IoU}(b, g) = \frac{\text{Area}(b \cap g)}{\text{Area}(b \cup g)}$ and $|M_t|$ is the number of matched pairs at frame $t$.
-
----
-
-### 3. IDF1 (Identification F1 Score)
-Measures global trajectory identity preservation over the entire sequence by computing the optimal global bipartite matching between ground-truth trajectories and predicted tracks:
-
+### 3. IDF1 (Identification F1-Score)
+Evaluates how consistently each object retains its distinct identity across the entire clip:
 $$\text{IDF1} = \frac{2 \cdot \text{IDTP}}{2 \cdot \text{IDTP} + \text{IDFP} + \text{IDFN}}$$
 
-Where:
-* **$\text{IDTP}$ (ID True Positives)**: Frames where the object is tracked with its globally assigned primary track ID.
-* **$\text{IDFN}$ (ID False Negatives)**: Frames where the object is missed or assigned to the wrong track ID.
-* **$\text{IDFP}$ (ID False Positives)**: Frames where the track ID is assigned to the wrong object or empty space.
-
-Related Identification Metrics:
-* **$\text{ID Precision (IDP)}$**: $\text{IDP} = \frac{\text{IDTP}}{\text{IDTP} + \text{IDFP}}$
-* **$\text{ID Recall (IDR)}$**: $\text{IDR} = \frac{\text{IDTP}}{\text{IDTP} + \text{IDFN}}$
-
 ---
 
-### 4. Speed & Latency Benchmarks
-* **Average Latency**: Average per-frame execution time of the tracker engine update:
-  $$\text{Latency} = \frac{1}{T} \sum_{t=1}^{T} \Delta t_{\text{update}} \quad (\text{ms/frame})$$
-* **Throughput (FPS)**: Effective tracking speed:
-  $$\text{FPS} = \frac{1000}{\text{Average Latency (ms)}}$$
+## 🛠️ Quick Start & Local Execution
 
----
+### Prerequisites
+* Python 3.12+
+* Node.js 18+
+* `ffmpeg` (installed on system path)
 
-### 5. ⚖️ Interactive Trade-off Analysis (Accuracy vs Latency vs Errors)
-The built-in multi-tracker comparison chart evaluates algorithm efficiency across three dimensions:
-* **Vertical Axis ($Y$)**: MOTA Accuracy percentage ($0\% \to 100\%$, higher is better).
-* **Horizontal Axis ($X$)**: Average per-frame latency in ms (supports both **Logarithmic** and **Linear** scales, lower is faster).
-* **Bubble Radius (Size)**: Total error burden $\text{Radius} \propto \text{FP} + \text{FN} + \text{IDSW}$. A compact bubble denotes a clean, resilient tracking run; a large bubble highlights heavy track fragmentation.
-* **★ Sweet Spot (Top-Left Quadrant)**: High MOTA Accuracy paired with sub-millisecond execution latency.
-
----
-
-## 🚀 Quick Start
-
-Run both backend and frontend concurrently with a single command:
+### One-Command Runner
+Start both the FastAPI backend (`http://localhost:8000`) and Next.js frontend (`http://localhost:3000`) concurrently:
 
 ```bash
+# Start simulator
 ./run.sh
-# or
-./start.sh
-```
 
-- **Frontend Dashboard**: [http://localhost:3000](http://localhost:3000)
-- **Backend Swagger API**: [http://localhost:8000/docs](http://localhost:8000/docs)
-
-*`run.sh` automatically checks/creates your Python virtual environment, installs missing dependencies, and frees ports if previously occupied.*
-
----
-
-## 🛑 Stopping the Services
-
-To shut down all running backend and frontend services and free ports `8000` & `3000`:
-
-```bash
+# Stop and clean up ports
 ./stop.sh
-# or
-./down.sh
-# or
-./run.sh down
 ```
 
----
-
-## 🛠️ Manual Execution
-
-<details>
-<summary><b>Click to expand individual manual launch commands</b></summary>
-
-### Backend (FastAPI + Python 3.12)
+### Manual Execution
 
 ```bash
+# Terminal 1: Backend
 cd backend
-uv venv --python 3.12 .venv
-uv pip install --python .venv/bin/python -r requirements.txt
-.venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-```
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
-### Frontend (Next.js 15)
-
-```bash
+# Terminal 2: Frontend
 cd frontend
 npm install
 npm run dev -- -p 3000
 ```
 
-</details>
-
 ---
 
-## 🤖 Trackers Catalog (17)
+## 📡 REST API Reference
 
-| Engine | Trackers | Mode | Key Strengths & Vulnerabilities |
-|---|---|---|---|
-| **Ultralytics** | `bytetrack`, `botsort`, `ocsort`, `deepocsort`, `fasttrack`, `tracktrack` | Multi-Object | State-of-the-art MOT. BoT-SORT uses camera motion compensation (GMC) + ReID; ByteTrack recovers low-confidence detections; OC-SORT handles non-linear momentum. |
-| **Custom Baselines** | `greedy_iou`, `centroid`, `sort` | Multi-Object | Implemented from scratch in pure NumPy/SciPy — no weights, no downloads, always available. Greedy IoU and centroid are the naive baselines; **SORT** adds a constant-velocity Kalman filter plus optimal Hungarian assignment, and is ByteTrack's parent. Compare it with ByteTrack to see exactly what the "second chance for weak detections" buys. |
-| **OpenCV** | `mil`, `kcf`, `csrt`, `mosse`, `medianflow`, `nano`, `vit`, `dasiamrpn` | Single-Object | Classic vision trackers. High frame rates; susceptible to severe scale change and complete visual occlusion. |
+The backend exposes an asynchronous REST API documented with interactive Swagger UI at `http://localhost:8000/docs`:
 
-> **Note**: Availability is automatically detected at startup. Unusable trackers in your current OpenCV build are disabled gracefully in the UI.
-
----
-
-## 📡 API Endpoints
-
-| Method | Endpoint | Purpose |
+| Method | Endpoint | Description |
 |---|---|---|
-| `GET` | `/api/health` | Service liveness probe |
-| `GET` | `/api/trackers` | Full tracker catalog, exposed hyperparameters, and host availability |
-| `POST` | `/api/scenarios/preview` | Generate synthetic scenario and stream preview video |
-| `POST` | `/api/simulations` | Dispatch asynchronous multi-tracker simulation job |
-| `GET` | `/api/jobs/{id}` | Poll simulation job status and fetch complete report results |
-| `POST / DELETE` | `/api/cleanup` | Purge generated job videos (*.mp4, *.jpg) & scenario previews on demand |
-| `GET` | `/api/media/{file}` | Serves H.264 video exports and event thumbnails |
+| `GET` | `/api/health` | Health & liveness probe (`{"ok": true}`). |
+| `GET` | `/api/trackers` | Full catalog of 18 trackers with hyperparameter schemas and default values. |
+| `POST` | `/api/scenarios/preview` | Generates synthetic physics scene and streams preview video clip. |
+| `POST` | `/api/simulations` | Dispatches asynchronous multi-tracker evaluation job with custom detector noise. |
+| `GET` | `/api/jobs/{id}` | Polls job execution status, frame-by-frame events, metrics, and radar chart URLs. |
+| `GET` | `/api/media/{file}` | Serves rendered H.264/WebM video clips and failure thumbnails. |
+| `POST/DELETE` | `/api/clear` | Purges generated simulation video and image artifacts. |
 
 ---
 
 ## 📁 Repository Structure
 
 ```text
-├── assets/                  # Demo GIF, UI snapshots, and promotional media
-│   ├── demos.gif            # 4-way tracker comparison animated demonstration
-│   ├── dashboard_results.png# Full results UI snapshot
-│   └── snapshot.png         # Interactive scenario generator snapshot
+├── demos/                                  # High-resolution demo GIFs, benchmark charts, & UI previews
+│   ├── grid_6way_trackers_stress.gif       # 6-tracker simultaneous stress test grid
+│   ├── grid_4way_tracker_benchmark.gif     # 4-paradigm side-by-side comparison
+│   ├── all_trackers_tradeoff_benchmark.png # MOTA vs IDF1 trade-off scatter plot & IDSW bars
+│   ├── production_decision_matrix.png      # Throughput (FPS) vs Identity Retention (IDF1)
+│   ├── ui_dashboard_benchmark.png          # Full Next.js results UI dashboard preview
+│   ├── ui_scenario_controls.png            # Interactive scenario physics controls
+│   └── *_6obj_stress.gif                   # Individual 6-object evaluation GIFs per tracker
 ├── backend/
 │   ├── app/
-│   │   ├── main.py          # FastAPI application & CORS setup
-│   │   ├── config.py        # File storage & directory paths
-│   │   ├── router/api.py    # REST API endpoints
+│   │   ├── main.py                         # FastAPI application entrypoint & middleware
+│   │   ├── config.py                       # Directory paths & system configurations
+│   │   ├── router/api.py                   # REST API routing
 │   │   └── core/
-│   │       ├── registry.py  # 16 tracker configurations & hyperparameters
-│   │       ├── trackers.py  # Engine wrappers (Ultralytics, OpenCV, Custom)
-│   │       ├── scenario.py  # Synthetic physics & scene generator
-│   │       ├── runner.py    # Simulation runner, video encoder, thumbnails
-│   │       ├── metrics.py   # MOTA/MOTP/IDF1 & event detection engine
-│   │       └── explainer.py # Graded natural-language report card engine
-├── frontend/
-│   ├── app/                 # Next.js App Router pages and global CSS
-│   ├── components/          # Controls, tracker picker, results, compare table
-│   └── lib/                 # API client and TypeScript definitions
-├── run.sh                   # One-command startup script
-├── stop.sh                  # One-command teardown script
-└── docker-compose.yml       # Containerized deployment configuration
+│   │       ├── registry.py                 # 18 tracker schemas & parameter declarations
+│   │       ├── scenario.py                 # Synthetic physics & perturbation generator
+│   │       ├── runner.py                   # Multi-tracker simulation runner & video renderer
+│   │       ├── metrics.py                  # CLEAR MOT, IDF1, and frame event detection
+│   │       └── trackers_standalone/        # Standalone native implementations (NumPy/SciPy)
+├── frontend/                               # Next.js 15 + React 19 interactive lab UI
+│   ├── app/                                # App router pages & layouts
+│   └── components/                         # Scenario controls, tracker selector, results dashboard
+├── run.sh                                  # Concurrency runner with port management
+└── stop.sh                                 # Clean shutdown & teardown script
 ```
 
 ---
 
 ## 📜 License
-
 Released under the [MIT License](LICENSE).
