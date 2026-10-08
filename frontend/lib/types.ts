@@ -86,6 +86,19 @@ export interface Metrics {
   avg_time_ms?: number;
   fps?: number;
   latencies?: number[];
+  motmetrics?: {
+    mota: number;
+    motp: number;
+    idf1: number;
+    idp: number;
+    idr: number;
+    idsw: number;
+    fp: number;
+    fn: number;
+    mt: number;
+    ml: number;
+    pt: number;
+  };
 }
 
 export interface ReportSection {

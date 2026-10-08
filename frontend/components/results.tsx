@@ -76,6 +76,15 @@ export function ResultCard({ r, fps = 15 }: { r: TrackerResult; fps?: number }) 
         {typeof m.fps === "number" && isFinite(m.fps) ? <MSum label="Tracker speed" v={m.fps} unit="FPS" best="high" /> : null}
       </div>
 
+      {m.motmetrics ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 6, margin: "6px 14px 2px", padding: "4px 8px", background: "rgba(56, 189, 248, 0.08)", border: "1px solid rgba(56, 189, 248, 0.2)", borderRadius: 6, fontSize: 11 }}>
+          <span style={{ fontWeight: 600, color: "#38bdf8" }}>✓ py-motmetrics verified:</span>
+          <span className="mono" style={{ color: "var(--muted)" }}>
+            MOTA {(m.motmetrics.mota * 100).toFixed(1)}% · IDF1 {(m.motmetrics.idf1 * 100).toFixed(1)}% · IDSW {m.motmetrics.idsw} · MT {m.motmetrics.mt} · ML {m.motmetrics.ml}
+          </span>
+        </div>
+      ) : null}
+
       {(typeof m.fp === "number" || typeof m.fn === "number" || typeof m.idsw === "number") ? (
         <ErrorBreakdownBar fp={m.fp ?? 0} fn={m.fn ?? 0} idsw={m.idsw ?? 0} />
       ) : null}

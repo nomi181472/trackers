@@ -21,6 +21,11 @@ from scipy.optimize import linear_sum_assignment
 from app.core.registry import get_tracker
 from app.core.trackers import _iou
 
+try:
+    import motmetrics as mm
+except ImportError:
+    mm = None
+
 
 @dataclass
 class Event:
@@ -114,6 +119,9 @@ def _eval_multi(scenario, tracker_id, track_frames, dets_frames):
 
     ev_idsw = set()  # (gt_target, gt_other) pairs recently reported, to dedupe spam
 
+    # Initialize py-motmetrics accumulator if available
+    acc = mm.MOTAccumulator(auto_id=True) if mm is not None else None
+
     for t in range(T):
         tracks = track_frames[t]
         track_map = {tr.id: tr for tr in tracks}
@@ -127,6 +135,24 @@ def _eval_multi(scenario, tracker_id, track_frames, dets_frames):
         for e in visible:
             gt_life[e["id"]] = gt_life.get(e["id"], 0) + 1
         gt_total += len(visible)
+
+        # Update py-motmetrics accumulator with IoU distance matrix
+        if acc is not None:
+            sorted_tids = sorted(tid_set)
+            if visible and sorted_tids:
+                dists = np.full((len(gt_ids), len(sorted_tids)), np.nan)
+                for gi, e in enumerate(visible):
+                    for ti, tid in enumerate(sorted_tids):
+                        iou_val = _iou(track_map[tid].box, e["box"])
+                        if iou_val >= 0.3:  # default IoU match threshold
+                            dists[gi, ti] = 1.0 - iou_val
+                acc.update(gt_ids, sorted_tids, dists)
+            elif visible:
+                acc.update(gt_ids, [], np.empty((len(gt_ids), 0)))
+            elif sorted_tids:
+                acc.update([], sorted_tids, np.empty((0, len(sorted_tids))))
+            else:
+                acc.update([], [], np.empty((0, 0)))
 
         pairs = _assign([track_map[i].box for i in tid_set],
                         [e["box"] for e in visible]) if visible else []
@@ -311,6 +337,42 @@ def _eval_multi(scenario, tracker_id, track_frames, dets_frames):
         gt_total=gt_total, gt_objects=num_gt_seen,
         frames=T,
     )
+
+    if acc is not None:
+        try:
+            mh = mm.metrics.create()
+            summary = mh.compute(
+                acc,
+                metrics=[
+                    "mota", "motp", "idf1", "idp", "idr",
+                    "mostly_tracked", "mostly_lost", "partially_tracked",
+                    "num_switches", "num_false_positives", "num_misses"
+                ],
+                name=tracker_id
+            )
+            # motmetrics motp is average distance (1 - IoU); convert to overlap IoU
+            mm_motp_dist = summary["motp"].iloc[0]
+            mm_motp = round(float(1.0 - mm_motp_dist), 3) if not np.isnan(mm_motp_dist) else 0.0
+            mm_mota = float(summary["mota"].iloc[0])
+            if np.isneginf(mm_mota) or np.isnan(mm_mota):
+                mm_mota = 0.0
+
+            metrics["motmetrics"] = {
+                "mota": round(max(0.0, mm_mota), 3),
+                "motp": mm_motp,
+                "idf1": round(float(summary["idf1"].iloc[0]), 3) if not np.isnan(summary["idf1"].iloc[0]) else 0.0,
+                "idp": round(float(summary["idp"].iloc[0]), 3) if not np.isnan(summary["idp"].iloc[0]) else 0.0,
+                "idr": round(float(summary["idr"].iloc[0]), 3) if not np.isnan(summary["idr"].iloc[0]) else 0.0,
+                "idsw": int(summary["num_switches"].iloc[0]),
+                "fp": int(summary["num_false_positives"].iloc[0]),
+                "fn": int(summary["num_misses"].iloc[0]),
+                "mt": int(summary["mostly_tracked"].iloc[0]),
+                "ml": int(summary["mostly_lost"].iloc[0]),
+                "pt": int(summary["partially_tracked"].iloc[0]),
+            }
+        except Exception:
+            pass
+
     events = sorted(events, key=lambda e: (e.severity not in ("critical", "warning"), e.frame))
     return EvalResult(tracker_id=tracker_id, metrics=metrics, events=events,
                       frames=track_frames, frame_summary=frame_summary)

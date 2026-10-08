@@ -173,3 +173,15 @@ def test_single_eval_scores_the_target_object_not_the_first_visible_one():
     assert res.metrics["total_visible"] == 0
     assert res.metrics["accuracy"] == 0.0
     assert res.metrics["longest_correct_run"] == 0
+
+
+def test_motmetrics_integration_consistency():
+    res = _evaluate("perfect")
+    assert "motmetrics" in res.metrics
+    mm_m = res.metrics["motmetrics"]
+    assert mm_m["mota"] == 1.0
+    assert mm_m["motp"] == 1.0
+    assert mm_m["idsw"] == 0
+    assert mm_m["fp"] == 0
+    assert mm_m["fn"] == 0
+    assert mm_m["idf1"] == 1.0
