@@ -53,7 +53,7 @@ def scenario_preview(payload: dict):
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=f"Bad scenario: {e}") from e
     jid = config.new_id()
-    path = config.SCENARIOS_DIR / f"{jid}_preview.mp4"
+    path = config.SCENARIOS_DIR / f"{jid}_preview.webm"
     sc.meta["preview_url"] = f"/api/media/{path.name}"
     def _preview_frames():
         for t in range(sc.meta["frames"]):
@@ -173,7 +173,7 @@ def media(name: str):
     candidates = [name]
     stem, ext = os.path.splitext(name)
     if ext == ".mp4":
-        candidates.append(f"{stem}.webm")
+        candidates.insert(0, f"{stem}.webm")
     elif ext == ".webm":
         candidates.append(f"{stem}.mp4")
 
@@ -285,9 +285,9 @@ def cleanup_data_files(
     freed_bytes = 0
     details = {"jobs_mp4": 0, "jobs_jpg": 0, "scenarios_mp4": 0, "uploads": 0}
 
-    # 1. Clean jobs directory (mp4 and jpg files)
+    # 1. Clean jobs directory (webm, mp4 and jpg files)
     if include_jobs and config.JOBS_DIR.exists():
-        for pattern, key in [("**/*.mp4", "jobs_mp4"), ("**/*.jpg", "jobs_jpg")]:
+        for pattern, key in [("**/*.webm", "jobs_webm"), ("**/*.mp4", "jobs_mp4"), ("**/*.jpg", "jobs_jpg")]:
             for p in config.JOBS_DIR.glob(pattern):
                 try:
                     if p.is_file():
@@ -295,22 +295,23 @@ def cleanup_data_files(
                         p.unlink()
                         deleted_count += 1
                         freed_bytes += sz
-                        details[key] += 1
+                        details[key] = details.get(key, 0) + 1
                 except OSError:
                     continue
 
-    # 2. Clean scenarios directory (mp4 files)
+    # 2. Clean scenarios directory (webm and mp4 files)
     if include_scenarios and config.SCENARIOS_DIR.exists():
-        for p in config.SCENARIOS_DIR.glob("*.mp4"):
-            try:
-                if p.is_file():
-                    sz = p.stat().st_size
-                    p.unlink()
-                    deleted_count += 1
-                    freed_bytes += sz
-                    details["scenarios_mp4"] += 1
-            except OSError:
-                continue
+        for pattern, key in [("*.webm", "scenarios_webm"), ("*.mp4", "scenarios_mp4")]:
+            for p in config.SCENARIOS_DIR.glob(pattern):
+                try:
+                    if p.is_file():
+                        sz = p.stat().st_size
+                        p.unlink()
+                        deleted_count += 1
+                        freed_bytes += sz
+                        details[key] = details.get(key, 0) + 1
+                except OSError:
+                    continue
 
     # 3. Clean uploads directory if explicitly requested
     if include_uploads and config.UPLOADS_DIR.exists():

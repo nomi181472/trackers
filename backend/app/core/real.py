@@ -206,6 +206,11 @@ def run_real(model, cap, tracker_id: str, tracker_params: dict, det_params: dict
 
 def _open_writer(path, fps, size):
     import cv2
+    from app.core.runner import get_ffmpeg_exe
+    if get_ffmpeg_exe():
+        v = cv2.VideoWriter(path, cv2.VideoWriter_fourcc(*"mp4v"), fps, size)
+        if v.isOpened():
+            return v, "mp4v", "mp4v"
     for fc in ("avc1", "avc3", "mp4v", "XVID"):
         v = cv2.VideoWriter(path, cv2.VideoWriter_fourcc(*fc), fps, size)
         if v.isOpened():

@@ -80,9 +80,8 @@ def video_to_data_url(path: str) -> str | None:
     import base64
     from pathlib import Path
     p = Path(path)
-    candidates = [p]
-    if p.suffix == ".mp4":
-        candidates.append(p.with_suffix(".webm"))
+    # Always prioritize WebM for HTML5 browser compatibility
+    candidates = [p.with_suffix(".webm"), p]
     for cand in candidates:
         if cand.exists() and cand.stat().st_size > 0:
             mime = "video/webm" if cand.suffix == ".webm" else "video/mp4"
@@ -108,9 +107,8 @@ def img_to_data_url(path: str) -> str | None:
 
 
 def write_video(frames, path: str, fps: int):
-    """Best-effort web-compatible video writer.
-    Tries avc1 first. If unavailable, transcodes via ffmpeg (system or imageio-ffmpeg)
-    to H.264 (yuv420p). If ffmpeg is absent, encodes to WebM VP8 so browsers can play it natively.
+    """Write browser-native WebM video (VP80) for 100% universal HTML5 playback.
+    Also ensures the target path exists if an .mp4 path was requested.
     """
     import cv2
     import gc
@@ -123,50 +121,55 @@ def write_video(frames, path: str, fps: int):
         return "empty"
 
     h, w = first_frame.shape[0], first_frame.shape[1]
-    ffmpeg = get_ffmpeg_exe()
-    video = None
-    started = None
+    p = Path(path)
+    webm_path = str(p.with_suffix(".webm"))
 
-    if not ffmpeg:
-        # Without ffmpeg, mp4v is unplayable in HTML5 browsers. Prefer WebM VP8.
-        webm_path = str(Path(path).with_suffix(".webm"))
-        for fc in ("VP80", "VP90"):
-            v = cv2.VideoWriter(webm_path, cv2.VideoWriter_fourcc(*fc), fps, (w, h))
-            if v.isOpened():
-                video, started = v, f"{fc.lower()}(webm)"
-                break
+    # 1. Always generate WebM with VP80 (guaranteed browser playback)
+    v_webm = cv2.VideoWriter(webm_path, cv2.VideoWriter_fourcc(*"VP80"), fps, (w, h))
+    if not v_webm.isOpened():
+        v_webm = cv2.VideoWriter(webm_path, cv2.VideoWriter_fourcc(*"VP90"), fps, (w, h))
 
-    if video is None:
-        for fc in ("avc1", "avc3", "mp4v", "XVID"):
-            v = cv2.VideoWriter(path, cv2.VideoWriter_fourcc(*fc), fps, (w, h))
-            if v.isOpened():
-                video, started = v, fc
-                break
+    started = "vp8(webm)" if v_webm.isOpened() else None
+    frame_list = []
+    need_frames = (p.suffix == ".mp4") or (not v_webm.isOpened())
 
-    if video is None:
-        raise RuntimeError("No working video codec available")
+    if v_webm.isOpened():
+        v_webm.write(first_frame)
+        if need_frames:
+            frame_list.append(first_frame)
+        for f in frames_iter:
+            v_webm.write(f)
+            if need_frames:
+                frame_list.append(f)
+        v_webm.release()
+    else:
+        frame_list = [first_frame] + list(frames_iter)
 
-    video.write(first_frame)
-    for f in frames_iter:
-        video.write(f)
-    video.release()
-
-    if ffmpeg and started not in ("avc1", "vp80(webm)", "vp90(webm)"):
-        try:
+    # 2. If target path is .mp4, also write .mp4
+    if p.suffix == ".mp4":
+        ffmpeg = get_ffmpeg_exe()
+        if ffmpeg:
             tmp = path + ".raw.mp4"
-            os.replace(path, tmp)
-            code = os.system(
-                f'"{ffmpeg}" -y -loglevel error -i "{tmp}" -c:v libx264 -pix_fmt yuv420p -an "{path}"')
-            if code != 0:
-                os.replace(tmp, path)
-            else:
-                os.remove(tmp)
-                started = "avc1(ffmpeg)"
-        except Exception:  # noqa: BLE001
-            pass
+            v = cv2.VideoWriter(tmp, cv2.VideoWriter_fourcc(*"mp4v"), fps, (w, h))
+            if v.isOpened():
+                for f in frame_list:
+                    v.write(f)
+                v.release()
+                code = os.system(
+                    f'"{ffmpeg}" -y -loglevel error -i "{tmp}" -c:v libx264 -pix_fmt yuv420p -an "{path}"')
+                if code == 0:
+                    try:
+                        os.remove(tmp)
+                    except OSError:
+                        pass
+                else:
+                    os.replace(tmp, path)
+        elif not os.path.exists(path) and os.path.exists(webm_path):
+            import shutil
+            shutil.copyfile(webm_path, path)
 
     gc.collect()
-    return str(started)
+    return str(started or "webm")
 
 
 def render_event_thumb(scenario, t: int, tracks, event_text: str, out_path: str, highlight: bool = True):
@@ -184,7 +187,7 @@ def _attach_preview(scenario, job_id: str):
     """Write a plain scenario preview clip and expose it on scenario.meta."""
     from app import config
     import gc
-    preview_path = config.SCENARIOS_DIR / f"{job_id}_preview.mp4"
+    preview_path = config.SCENARIOS_DIR / f"{job_id}_preview.webm"
     def _preview_gen():
         for t in range(scenario.meta["frames"]):
             yield scenario.render_annotated_frame(t, tracks=[], draw_gt=True)

@@ -43,7 +43,7 @@ def test_a_multi_object_tracker_produces_a_full_report(scene):
     assert r["metrics"]["mota"] is not None
     assert r["metrics"]["fp"] == r["metrics"]["fp"]  # not None
     assert r["report"]["grade"] in list("SACD")
-    assert r["video_url"].endswith("pytest_greedy_iou.mp4")
+    assert r["video_url"].endswith(("pytest_greedy_iou.webm", "pytest_greedy_iou.mp4"))
     assert res["trackers"] == ["greedy_iou"]
 
 
