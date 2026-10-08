@@ -30,6 +30,26 @@ class TraceContextFilter(logging.Filter):
         return True
 
 
+import os
+
+# Determine console log level: in production / serverless (Render, Vercel, or ENV=production),
+# default to WARNING so that INFO logs do not clutter the console.
+_env_name = os.getenv("ENVIRONMENT") or os.getenv("ENV") or os.getenv("NODE_ENV") or ""
+_is_prod = _env_name.lower() in ("production", "prod") or bool(os.getenv("VERCEL") or os.getenv("RENDER"))
+_default_console_level = logging.WARNING if _is_prod else logging.INFO
+
+_custom_level_str = os.getenv("LOG_LEVEL", "").upper()
+_level_map = {
+    "DEBUG": logging.DEBUG,
+    "INFO": logging.INFO,
+    "WARN": logging.WARNING,
+    "WARNING": logging.WARNING,
+    "ERROR": logging.ERROR,
+    "CRITICAL": logging.CRITICAL,
+}
+CONSOLE_LOG_LEVEL = _level_map.get(_custom_level_str, _default_console_level)
+
+
 def setup_logging(log_level: int = logging.INFO) -> logging.Logger:
     """Configures root and app loggers with structured formatting and tracing."""
     root_logger = logging.getLogger()
@@ -38,7 +58,8 @@ def setup_logging(log_level: int = logging.INFO) -> logging.Logger:
     if getattr(root_logger, "_tracker_logging_initialized", False):
         return logging.getLogger("tracker_app")
 
-    root_logger.setLevel(log_level)
+    # Set root logger to capture all required levels down to DEBUG/INFO
+    root_logger.setLevel(min(log_level, CONSOLE_LOG_LEVEL))
 
     log_format = (
         "[%(asctime)s] [%(levelname)s] [trace:%(request_id)s] "
@@ -48,10 +69,10 @@ def setup_logging(log_level: int = logging.INFO) -> logging.Logger:
     formatter = logging.Formatter(fmt=log_format, datefmt=date_format)
     trace_filter = TraceContextFilter()
 
-    # 1. Console Handler (Standard Output for Docker / Hugging Face Spaces web UI)
-    # StreamHandler() with stream=None defaults to writing to current sys.stderr/stdout safely
+    # 1. Console Handler (Standard Output / Error):
+    # Only displays WARNING, ERROR, and CRITICAL in production environments
     console_handler = logging.StreamHandler()
-    console_handler.setLevel(log_level)
+    console_handler.setLevel(CONSOLE_LOG_LEVEL)
     console_handler.setFormatter(formatter)
     console_handler.addFilter(trace_filter)
     root_logger.addHandler(console_handler)

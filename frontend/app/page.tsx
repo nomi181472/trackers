@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { Catalog, ParamValues, ScenarioMeta, SimulationResult } from "@/lib/types";
-import { getCatalog, scenarioPreview, startSimulation, pollUntilDone, mediaUrl } from "@/lib/api";
+import { getCatalog, scenarioPreview, startSimulation, pollUntilDone, mediaUrl, cleanupGeneratedFiles } from "@/lib/api";
 import { SliderRow, BoolRow, ParamControl, SelectRow } from "@/components/controls";
 import { TrackerPicker } from "@/components/trackerPicker";
 import { ResultsView, CompareTable } from "@/components/results";
@@ -116,6 +116,10 @@ export default function Home() {
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [catalogErr, setCatalogErr] = useState<string | null>(null);
   const [theme, setTheme] = useState<"dark" | "light" | "midnight">("dark");
+  const [showClearModal, setShowClearModal] = useState<boolean>(false);
+  const [clearing, setClearing] = useState<boolean>(false);
+  const [clearStatus, setClearStatus] = useState<string | null>(null);
+  const [clearError, setClearError] = useState<string | null>(null);
 
   useEffect(() => {
     const savedTheme = (localStorage.getItem("tracker_theme") as "dark" | "light" | "midnight") || "dark";
@@ -134,6 +138,27 @@ export default function Home() {
       .then(setCatalog)
       .catch((e) => setCatalogErr(e instanceof Error ? e.message : String(e)));
   }, []);
+
+  const handleClearAllRecords = async () => {
+    setClearing(true);
+    setClearError(null);
+    try {
+      const res = await cleanupGeneratedFiles({
+        include_jobs: true,
+        include_scenarios: true,
+        include_uploads: true,
+      });
+      setShowClearModal(false);
+      setClearStatus(
+        `Successfully cleared ${res.deleted_count} files (${res.freed_mb} MB freed).`
+      );
+      setTimeout(() => setClearStatus(null), 5000);
+    } catch (e) {
+      setClearError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setClearing(false);
+    }
+  };
 
   return (
     <div className="wrap">
@@ -179,6 +204,17 @@ export default function Home() {
             </button>
           </div>
 
+          {/* Clear Records Button */}
+          <button
+            type="button"
+            className="clear-records-btn"
+            onClick={() => setShowClearModal(true)}
+            title="Clear all generated simulation videos, thumbnails, and preview clips"
+          >
+            <span>🗑️</span>
+            <span>Clear Records</span>
+          </button>
+
           {/* Theme / Appearance Switcher */}
           <div className="theme-selector">
             <button
@@ -209,6 +245,12 @@ export default function Home() {
         </div>
       </div>
 
+      {clearStatus ? (
+        <div className="panel" style={{ marginBottom: "16px", padding: "10px 16px", borderLeft: "4px solid #10b981", color: "#6ee7b7", background: "rgba(16, 185, 129, 0.1)" }}>
+          ✓ {clearStatus}
+        </div>
+      ) : null}
+
       {catalogErr ? (
         <div className="err" style={{ marginBottom: "16px" }}>
           Can&apos;t reach the backend: {catalogErr}. Start it with <span className="mono">uvicorn app.main:app --port 8000</span> in backend/.
@@ -223,6 +265,62 @@ export default function Home() {
         <div className="panel" style={{ padding: "40px", textAlign: "center" }}>
           <span className="spin" style={{ width: 22, height: 22 }} />
           <span>Loading tracker catalog & engines…</span>
+        </div>
+      ) : null}
+
+      {/* Clear Records Confirmation Modal */}
+      {showClearModal ? (
+        <div className="modal-backdrop" onClick={() => !clearing && setShowClearModal(false)}>
+          <div className="modal-dialog" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>
+                <span>🗑️</span>
+                <span>Clear All Generated Records</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => !clearing && setShowClearModal(false)}
+                style={{ background: "transparent", border: "none", color: "var(--muted)", cursor: "pointer", fontSize: "16px" }}
+              >
+                ✕
+              </button>
+            </div>
+            <div className="modal-body">
+              <p style={{ margin: "0 0 12px", color: "var(--text)", lineHeight: 1.5 }}>
+                Are you sure you want to delete and purge all generated simulation records?
+              </p>
+              <div style={{ background: "var(--bg-3)", padding: "12px", borderRadius: "8px", fontSize: "12.5px", color: "var(--muted)", border: "1px solid var(--line)" }}>
+                <div>• All benchmark simulation video clips (<span className="mono">*.mp4</span>)</div>
+                <div>• All failure event frame thumbnails (<span className="mono">*.jpg</span>)</div>
+                <div>• All synthetic scenario preview videos</div>
+                <div>• Any temporary video uploads</div>
+              </div>
+              {clearError ? (
+                <div className="err" style={{ marginTop: "12px" }}>
+                  {clearError}
+                </div>
+              ) : null}
+            </div>
+            <div className="modal-footer">
+              <button
+                type="button"
+                className="btn ghost"
+                style={{ padding: "8px 14px", fontSize: "13px" }}
+                onClick={() => setShowClearModal(false)}
+                disabled={clearing}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn-danger"
+                onClick={handleClearAllRecords}
+                disabled={clearing}
+              >
+                {clearing ? "Clearing Records…" : "Yes, Delete All Records"}
+              </button>
+            </div>
+          </div>
         </div>
       ) : null}
     </div>
