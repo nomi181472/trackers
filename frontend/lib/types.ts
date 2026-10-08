@@ -48,6 +48,7 @@ export interface ScenarioMeta {
   occluder_box?: number[] | null;
   seed: number;
   preview_url?: string;
+  preview_data_url?: string;
   preview_codec?: string;
 }
 
@@ -124,8 +125,9 @@ export interface TrackerResult {
   frame_summary?: FrameSummaryItem[];
   report: Report;
   video_url: string;
+  video_data_url?: string;
   codec: string;
-  thumbnails?: { frame: number; type: string; severity: string; url: string }[];
+  thumbnails?: { frame: number; type: string; severity: string; url: string; data_url?: string }[];
   error?: string;
 }
 

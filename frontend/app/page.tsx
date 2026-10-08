@@ -638,7 +638,7 @@ function SimulatorWorkspace({ catalog, mode }: { catalog: Catalog; mode: "standa
             {preview ? (
               <div style={{ marginTop: 12 }}>
                 <video
-                  src={mediaUrl(preview.preview_url)}
+                  src={mediaUrl(preview.preview_data_url || preview.preview_url)}
                   controls
                   muted
                   loop

@@ -64,12 +64,58 @@ class SimDetector:
         return np.array(dets) if dets else np.zeros((0, 5))
 
 
+def get_ffmpeg_exe() -> str | None:
+    import shutil
+    exe = shutil.which("ffmpeg")
+    if exe:
+        return exe
+    try:
+        import imageio_ffmpeg
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        return None
+
+
+def video_to_data_url(path: str) -> str | None:
+    import base64
+    from pathlib import Path
+    p = Path(path)
+    candidates = [p]
+    if p.suffix == ".mp4":
+        candidates.append(p.with_suffix(".webm"))
+    for cand in candidates:
+        if cand.exists() and cand.stat().st_size > 0:
+            mime = "video/webm" if cand.suffix == ".webm" else "video/mp4"
+            try:
+                b64 = base64.b64encode(cand.read_bytes()).decode("ascii")
+                return f"data:{mime};base64,{b64}"
+            except Exception:
+                pass
+    return None
+
+
+def img_to_data_url(path: str) -> str | None:
+    import base64
+    from pathlib import Path
+    p = Path(path)
+    if p.exists() and p.stat().st_size > 0:
+        try:
+            b64 = base64.b64encode(p.read_bytes()).decode("ascii")
+            return f"data:image/jpeg;base64,{b64}"
+        except Exception:
+            pass
+    return None
+
+
 def write_video(frames, path: str, fps: int):
-    """Best-effort H.264 writer (avc1 -> ffmpeg transcode -> mp4v fallback).
-    Accepts lists or generators to stream frames without high RAM overhead.
+    """Best-effort web-compatible video writer.
+    Tries avc1 first. If unavailable, transcodes via ffmpeg (system or imageio-ffmpeg)
+    to H.264 (yuv420p). If ffmpeg is absent, encodes to WebM VP8 so browsers can play it natively.
     """
     import cv2
     import gc
+    from pathlib import Path
+
     frames_iter = iter(frames)
     try:
         first_frame = next(frames_iter)
@@ -77,23 +123,36 @@ def write_video(frames, path: str, fps: int):
         return "empty"
 
     h, w = first_frame.shape[0], first_frame.shape[1]
+    ffmpeg = get_ffmpeg_exe()
     video = None
     started = None
-    for fc in ("avc1", "avc3", "mp4v", "XVID"):
-        v = cv2.VideoWriter(path, cv2.VideoWriter_fourcc(*fc), fps, (w, h))
-        if v.isOpened():
-            video, started = v, fc
-            break
+
+    if not ffmpeg:
+        # Without ffmpeg, mp4v is unplayable in HTML5 browsers. Prefer WebM VP8.
+        webm_path = str(Path(path).with_suffix(".webm"))
+        for fc in ("VP80", "VP90"):
+            v = cv2.VideoWriter(webm_path, cv2.VideoWriter_fourcc(*fc), fps, (w, h))
+            if v.isOpened():
+                video, started = v, f"{fc.lower()}(webm)"
+                break
+
+    if video is None:
+        for fc in ("avc1", "avc3", "mp4v", "XVID"):
+            v = cv2.VideoWriter(path, cv2.VideoWriter_fourcc(*fc), fps, (w, h))
+            if v.isOpened():
+                video, started = v, fc
+                break
+
     if video is None:
         raise RuntimeError("No working video codec available")
+
     video.write(first_frame)
     for f in frames_iter:
         video.write(f)
     video.release()
-    try:
-        import shutil
-        ffmpeg = shutil.which("ffmpeg")
-        if ffmpeg and started != "avc1":
+
+    if ffmpeg and started not in ("avc1", "vp80(webm)", "vp90(webm)"):
+        try:
             tmp = path + ".raw.mp4"
             os.replace(path, tmp)
             code = os.system(
@@ -103,8 +162,9 @@ def write_video(frames, path: str, fps: int):
             else:
                 os.remove(tmp)
                 started = "avc1(ffmpeg)"
-    except Exception:  # noqa: BLE001
-        pass
+        except Exception:  # noqa: BLE001
+            pass
+
     gc.collect()
     return str(started)
 
@@ -131,6 +191,9 @@ def _attach_preview(scenario, job_id: str):
     codec = write_video(_preview_gen(), str(preview_path), scenario.fps)
     scenario.meta["preview_url"] = f"/api/media/{preview_path.name}"
     scenario.meta["preview_codec"] = codec
+    data_url = video_to_data_url(str(preview_path))
+    if data_url:
+        scenario.meta["preview_data_url"] = data_url
     gc.collect()
     return scenario.meta["preview_url"]
 
@@ -230,6 +293,7 @@ def run_simulation(scenario, specs: list[dict], detection_params: dict,
                                                       labels=True,
                                                       tracker_name=meta["name"])
         codec = write_video(_annotated_gen(), vid_path, scenario.fps)
+        vid_data_url = video_to_data_url(vid_path)
 
         # ---- event thumbnails ---- #
         thumbs = []
@@ -240,17 +304,24 @@ def run_simulation(scenario, specs: list[dict], detection_params: dict,
             tp = os.path.join(out_dir, tn)
             tracks_at = track_frames[e.frame] if e.frame < len(track_frames) else []
             render_event_thumb(scenario, e.frame, tracks_at, e.text, tp)
-            thumbs.append(dict(frame=e.frame, type=e.type, severity=e.severity,
-                               url=f"/api/media/{tn}"))
+            thumb_info = dict(frame=e.frame, type=e.type, severity=e.severity,
+                              url=f"/api/media/{tn}")
+            t_data = img_to_data_url(tp)
+            if t_data:
+                thumb_info["data_url"] = t_data
+            thumbs.append(thumb_info)
 
         verdict = report["grade"]
-        results.append(dict(
+        res_item = dict(
             tracker_id=tid, name=meta["name"], tagline=meta["tagline"], mode=meta["mode"],
             metrics=eval_res.metrics, events=[e.to_dict() for e in eval_res.events],
             frame_summary=eval_res.frame_summary, report=report,
             video_url=f"/api/media/{vid_name}", codec=codec,
             thumbnails=thumbs,
-        ))
+        )
+        if vid_data_url:
+            res_item["video_data_url"] = vid_data_url
+        results.append(res_item)
         tick(f"Done with {meta['name']}", 0.9 + 0.1 * (len(results) / max(1, len(specs))))
 
     try:

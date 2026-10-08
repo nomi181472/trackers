@@ -10,7 +10,7 @@ from app import config
 from app.core import jobs
 from app.core.plugins import REGISTRY
 from app.core.registry import DETECTION_DEFAULTS, DETECTOR_PARAMS, SCENARIO_DETECTION_PARAMS, get_tracker
-from app.core.runner import run_simulation, write_video
+from app.core.runner import run_simulation, write_video, video_to_data_url
 from app.core.scenario import Scenario
 
 router = APIRouter(prefix="/api")
@@ -60,6 +60,9 @@ def scenario_preview(payload: dict):
             yield sc.render_annotated_frame(t, tracks=[], draw_gt=True)
     try:
         sc.meta["preview_codec"] = write_video(_preview_frames(), str(path), sc.fps)
+        data_url = video_to_data_url(str(path))
+        if data_url:
+            sc.meta["preview_data_url"] = data_url
     except Exception as e:  # noqa: BLE001
         sc.meta["preview_warning"] = str(e)
     gc.collect()
@@ -167,10 +170,19 @@ def job_status(jid: str):
 
 @router.get("/media/{name}")
 def media(name: str):
+    candidates = [name]
+    stem, ext = os.path.splitext(name)
+    if ext == ".mp4":
+        candidates.append(f"{stem}.webm")
+    elif ext == ".webm":
+        candidates.append(f"{stem}.mp4")
+
     for d in config.MEDIA_DIRS:
-        p = d / name
-        if p.exists():
-            return FileResponse(str(p))
+        for cand in candidates:
+            p = d / cand
+            if p.exists():
+                media_type = "video/webm" if p.suffix == ".webm" else "video/mp4" if p.suffix == ".mp4" else None
+                return FileResponse(str(p), media_type=media_type)
     raise HTTPException(status_code=404, detail="media not found")
 
 

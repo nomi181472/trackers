@@ -215,8 +215,8 @@ def _open_writer(path, fps, size):
 
 def _maybe_transcode(path):
     try:
-        import shutil
-        ff = shutil.which("ffmpeg")
+        from app.core.runner import get_ffmpeg_exe
+        ff = get_ffmpeg_exe()
         if not ff:
             return
         tmp = path + ".raw.mp4"

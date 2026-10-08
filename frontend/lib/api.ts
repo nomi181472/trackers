@@ -24,7 +24,7 @@ export const API = process.env.NEXT_PUBLIC_API_URL || "";
 
 export function mediaUrl(p: string | null | undefined): string {
   if (!p) return "";
-  if (p.startsWith("http://") || p.startsWith("https://")) return p;
+  if (p.startsWith("http://") || p.startsWith("https://") || p.startsWith("data:") || p.startsWith("blob:")) return p;
   const base = getApiBase();
   const normalizedPath = p.startsWith("/") ? p : `/${p}`;
   return base ? `${base}${normalizedPath}` : normalizedPath;

@@ -21,8 +21,8 @@ export function ResultsView({ result }: { result: SimulationResult }) {
           {result.scenario.blur ? <span>🌫️ blur</span> : null}
           {result.scenario.similar_colors ? <span>🧑‍🤝‍🧑 look-alikes</span> : null}
         </div>
-        {result.scenario.preview_url ? (
-          <video src={mediaUrl(result.scenario.preview_url)} controls loop muted style={{ width: "100%", borderRadius: 8, border: "1px solid var(--line)" }} />
+        {result.scenario.preview_data_url || result.scenario.preview_url ? (
+          <video src={mediaUrl(result.scenario.preview_data_url || result.scenario.preview_url)} controls loop muted style={{ width: "100%", borderRadius: 8, border: "1px solid var(--line)" }} />
         ) : (
           <div className="err">Scenario preview unavailable for this run.</div>
         )}
@@ -51,8 +51,14 @@ export function ResultCard({ r, fps = 15 }: { r: TrackerResult; fps?: number }) 
         <span className={`grade grade-${r.report?.grade || "F"}`}>{r.report?.grade || "✖"}</span>
         <span style={{ marginLeft: "auto" }} className="tag mono">{r.codec}</span>
       </div>
-      {r.video_url ? (
-        <video src={mediaUrl(r.video_url)} controls loop muted poster={r.thumbnails?.[0]?.url ? mediaUrl(r.thumbnails[0].url) : undefined} />
+      {r.video_data_url || r.video_url ? (
+        <video
+          src={mediaUrl(r.video_data_url || r.video_url)}
+          controls
+          loop
+          muted
+          poster={r.thumbnails?.[0]?.data_url ? mediaUrl(r.thumbnails[0].data_url) : (r.thumbnails?.[0]?.url ? mediaUrl(r.thumbnails[0].url) : undefined)}
+        />
       ) : null}
 
       <div className="metrics">
@@ -98,9 +104,9 @@ export function ResultCard({ r, fps = 15 }: { r: TrackerResult; fps?: number }) 
       {r.thumbnails?.length ? (
         <div className="thumbs">
           {r.thumbnails.map((t, idx) => (
-            <div key={`${r.tracker_id}-${t.frame}-${t.type}-${idx}`} className="thumb" title={t.type} onClick={() => seek(r.video_url, t.frame, fps)}>
+            <div key={`${r.tracker_id}-${t.frame}-${t.type}-${idx}`} className="thumb" title={t.type} onClick={() => seek(r.video_data_url || r.video_url, t.frame, fps)}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={mediaUrl(t.url)} alt={t.type} loading="lazy" />
+              <img src={mediaUrl(t.data_url || t.url)} alt={t.type} loading="lazy" />
               <div className="lbl">
                 f{t.frame} {t.type}
               </div>
@@ -773,8 +779,14 @@ function MultiTrackerComparisonChart({ results }: { results: TrackerResult[] }) 
 }
 
 function seek(url: string, frame: number, fps: number) {
-  const v = document.querySelector(`video[src="${mediaUrl(url)}"]`) as HTMLVideoElement | null;
-  if (v) v.currentTime = frame / Math.max(fps, 1);
+  const target = mediaUrl(url);
+  const videos = document.querySelectorAll("video");
+  for (const v of videos) {
+    if (v.src === target || v.getAttribute("src") === target) {
+      v.currentTime = frame / Math.max(fps, 1);
+      break;
+    }
+  }
 }
 
 function MSum({ label, v, unit, best }: { label: string; v: number; unit?: string; best: "high" | "low" }) {
