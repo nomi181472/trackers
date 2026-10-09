@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { MobileGuard } from "@/components/mobileGuard";
 
 export const metadata: Metadata = {
   title: "Multi-Object Tracker Simulator | Standard & Production",
@@ -9,7 +10,9 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <MobileGuard>{children}</MobileGuard>
+      </body>
     </html>
   );
 }
