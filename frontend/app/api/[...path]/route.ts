@@ -39,7 +39,8 @@ async function handleProxy(req: NextRequest, params: { path: string[] }) {
   // 2. Clean jobId if prefixed
   if (pathSegments[0] === "jobs" && pathSegments[1]) {
     const rawJobId = pathSegments[1].replace(/^(wn_|wr_|wv_)/, "");
-    rewrittenPath = `/jobs/${rawJobId}`;
+    const rest = pathSegments.slice(2).join("/");
+    rewrittenPath = rest ? `/jobs/${rawJobId}/${rest}` : `/jobs/${rawJobId}`;
   }
 
   // 3. Construct target URL to worker-n directly

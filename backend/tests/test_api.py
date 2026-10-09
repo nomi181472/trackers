@@ -307,4 +307,49 @@ def test_process_restart_recovery(client):
         job_file.unlink(missing_ok=True)
 
 
+def test_cancel_nonexistent_job(client):
+    r = client.post("/api/jobs/nonexistent-id-xyz/cancel")
+    assert r.status_code == 404
+    assert "no such job" in r.json()["detail"].lower()
+
+
+def test_cancel_already_finished_job(client):
+    from app.core import jobs
+    jid = f"finished_job_{config.new_id()}"
+    job_file = config.JOBS_DIR / f"{jid}.json"
+    dummy = {"id": jid, "kind": "simulation", "status": "done", "progress": 1.0, "message": "Finished"}
+    with jobs._lock:
+        jobs._JOBS[jid] = dummy
+    jobs._persist_job(dummy)
+    try:
+        r = client.post(f"/api/jobs/{jid}/cancel")
+        assert r.status_code == 409
+        assert "already in terminal state" in r.json()["detail"].lower()
+    finally:
+        with jobs._lock:
+            jobs._JOBS.pop(jid, None)
+        job_file.unlink(missing_ok=True)
+
+
+def test_cancel_queued_or_running_job(client):
+    from app.core import jobs
+    jid = f"queued_job_{config.new_id()}"
+    job_file = config.JOBS_DIR / f"{jid}.json"
+    dummy = {"id": jid, "kind": "simulation", "status": "running", "progress": 0.2, "message": "Running"}
+    with jobs._lock:
+        jobs._JOBS[jid] = dummy
+    jobs._persist_job(dummy)
+    try:
+        r = client.post(f"/api/jobs/{jid}/cancel")
+        assert r.status_code == 200
+        assert r.json()["status"] == "cancelling"
+        assert jobs.is_job_cancelled(jid) is True
+    finally:
+        with jobs._lock:
+            jobs._JOBS.pop(jid, None)
+            jobs._CANCEL_REQUESTS.discard(jid)
+        job_file.unlink(missing_ok=True)
+
+
+
 

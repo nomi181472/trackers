@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Catalog, ParamValues, ScenarioMeta, SimulationResult } from "@/lib/types";
-import { getCatalog, scenarioPreview, startSimulation, pollUntilDone, mediaUrl, cleanupGeneratedFiles } from "@/lib/api";
+import { getCatalog, scenarioPreview, startSimulation, pollUntilDone, mediaUrl, cleanupGeneratedFiles, cancelJob, sendBeaconCancel } from "@/lib/api";
 import { SliderRow, BoolRow, ParamControl, SelectRow } from "@/components/controls";
 import { TrackerPicker } from "@/components/trackerPicker";
 import { ResultsView, CompareTable } from "@/components/results";
 import { LogsView } from "@/components/logsView";
 import type { JobStatus } from "@/lib/types";
+import { saveActiveJob, getActiveJob, clearActiveJob } from "@/lib/jobStorage";
 
 /* ------------------------------------------------------------------ */
 /* Presets: Standard & Production                                     */
@@ -293,14 +294,25 @@ export default function Home() {
         </div>
       ) : null}
 
-      {mode === "logs" ? (
-        <LogsView />
-      ) : catalog ? (
-        <SimulatorWorkspace catalog={catalog} mode={mode} />
-      ) : !catalogErr ? (
+      {/* Loading state — shown only before catalog arrives */}
+      {!catalog && !catalogErr ? (
         <div className="panel" style={{ padding: "40px", textAlign: "center" }}>
           <span className="spin" style={{ width: 22, height: 22 }} />
-          <span>Loading tracker catalog & engines…</span>
+          <span>Loading tracker catalog &amp; engines…</span>
+        </div>
+      ) : null}
+
+      {/* LogsView — always mounted, hidden when not active.
+          Keeps scroll position and loaded log lines intact. */}
+      <div style={{ display: mode === "logs" ? "block" : "none" }}>
+        <LogsView />
+      </div>
+
+      {/* SimulatorWorkspace — always mounted so running job state (job ID,
+          progress, results) is never lost when switching to Logs tab and back. */}
+      {catalog ? (
+        <div style={{ display: mode !== "logs" ? "block" : "none" }}>
+          <SimulatorWorkspace catalog={catalog} mode={mode} />
         </div>
       ) : null}
 
@@ -389,7 +401,7 @@ export default function Home() {
 /* Unified Simulator Workspace (Standard & Production Modes)           */
 /* ------------------------------------------------------------------ */
 
-function SimulatorWorkspace({ catalog, mode }: { catalog: Catalog; mode: "standard" | "production" }) {
+function SimulatorWorkspace({ catalog, mode }: { catalog: Catalog; mode: "standard" | "production" | "logs" }) {
   const isProduction = mode === "production";
   const presets = isProduction ? PRODUCTION_PRESETS : STANDARD_PRESETS;
   const initialPresetKey = isProduction ? "cctv_surveillance" : "crossing";
@@ -404,10 +416,16 @@ function SimulatorWorkspace({ catalog, mode }: { catalog: Catalog; mode: "standa
   const [preview, setPreview] = useState<ScenarioMeta | null>(null);
   const [running, setRunning] = useState<JobStatus | null>(null);
   const [activeWorker, setActiveWorker] = useState<string | null>(null);
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const [cancelling, setCancelling] = useState<boolean>(false);
   const [result, setResult] = useState<SimulationResult | null>(null);
   const [history, setHistory] = useState<SimulationResult[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [showAdvancedDet, setShowAdvancedDet] = useState(false);
+
+  // Stable ref so event handlers always see the current jobId without stale closure
+  const activeJobIdRef = useRef<string | null>(null);
+  activeJobIdRef.current = activeJobId;
 
   // Sync preset defaults when mode switches
   useEffect(() => {
@@ -442,6 +460,63 @@ function SimulatorWorkspace({ catalog, mode }: { catalog: Catalog; mode: "standa
     setSelected(defaults);
   }, [catalog]);
 
+  // ── On mount: restore any active job this tab had before a tab-switch / focus loss ──
+  useEffect(() => {
+    const saved = getActiveJob();
+    if (!saved) return;
+    // Job IDs are unique per-tab via jobStorage, so this is always this user's job
+    setActiveJobId(saved.jobId);
+    if (saved.worker) setActiveWorker(saved.worker);
+    // Reattach polling — updates progress bar and fetches result when done
+    pollUntilDone(saved.jobId, setRunning)
+      .then((job) => {
+        clearActiveJob();
+        setActiveJobId(null);
+        if (job.status === "done" && job.result) {
+          const res = job.result as SimulationResult;
+          setResult(res);
+          setHistory((h) => [res, ...h].slice(0, 4));
+        } else if (job.status === "cancelled") {
+          setErr("Simulation was cancelled.");
+        } else if (job.status === "error") {
+          setErr(job.error || "Simulation job encountered an error.");
+        }
+      })
+      .catch(() => { clearActiveJob(); setActiveJobId(null); })
+      .finally(() => { setRunning(null); setCancelling(false); });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // run once on mount only
+
+  // ── beforeunload: warn user if a simulation is running and cancel on confirm ──
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (!activeJobIdRef.current) return;
+      // Show browser confirmation dialog
+      e.preventDefault();
+      // Most browsers ignore custom messages, but setting returnValue triggers the dialog
+      e.returnValue = "A tracker simulation is currently running. Leaving or refreshing will cancel the background worker. Are you sure?";
+      // Fire cancel via sendBeacon (guaranteed delivery even during unload)
+      sendBeaconCancel(activeJobIdRef.current);
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, []);
+
+  // ── visibilitychange: re-sync progress when user returns to this browser tab ──
+  useEffect(() => {
+    const handler = () => {
+      if (document.visibilityState !== "visible") return;
+      // If we have a running job, kick an immediate poll to refresh UI
+      const jid = activeJobIdRef.current;
+      if (!jid) return;
+      import("@/lib/api").then(({ getJob }) => {
+        getJob(jid).then(setRunning).catch(() => {});
+      });
+    };
+    document.addEventListener("visibilitychange", handler);
+    return () => document.removeEventListener("visibilitychange", handler);
+  }, []);
+
   const applyPreset = (key: string) => {
     setPreset(key);
     const p = presets[key];
@@ -453,10 +528,23 @@ function SimulatorWorkspace({ catalog, mode }: { catalog: Catalog; mode: "standa
     }
   };
 
+  const handleCancel = useCallback(async () => {
+    const jid = activeJobIdRef.current;
+    if (!jid || cancelling) return;
+    setCancelling(true);
+    try {
+      await cancelJob(jid);
+    } catch {
+      // Cancellation errors are non-fatal; polling will detect the state change
+    }
+  }, [cancelling]);
+
   const run = async () => {
     setErr(null);
     setResult(null);
     setActiveWorker(null);
+    setActiveJobId(null);
+    setCancelling(false);
     const chosen = catalog.trackers.filter((t) => selected[t.id]);
     if (!chosen.length) return setErr("Select at least one tracker to simulate.");
     const unavailable = chosen.filter((t) => !t.available);
@@ -472,15 +560,34 @@ function SimulatorWorkspace({ catalog, mode }: { catalog: Catalog; mode: "standa
         detection,
         trackers: chosen.map((t) => ({ tracker_id: t.id, params: selected[t.id] || {} })),
       });
-      if (worker) {
-        setActiveWorker(worker);
-      }
+      // Persist the active job to browser storage before polling begins so that
+      // switching tabs or background-ing the page never loses the job reference.
+      saveActiveJob({
+        jobId: job_id,
+        worker: worker || null,
+        mode: isProduction ? "production" : "standard",
+        startedAt: Date.now(),
+        scenario,
+        trackerIds: chosen.map((t) => t.id),
+      });
+      setActiveJobId(job_id);
+      if (worker) setActiveWorker(worker);
+
       const job = await pollUntilDone(job_id, setRunning);
-      if (job.status === "error") throw new Error(job.error || "Simulation job encountered an error.");
-      const res = job.result as SimulationResult;
-      setResult(res);
-      setHistory((h) => [res, ...h].slice(0, 4));
+      clearActiveJob();
+      setActiveJobId(null);
+      if (job.status === "cancelled") {
+        setErr("Simulation was cancelled.");
+      } else if (job.status === "error") {
+        throw new Error(job.error || "Simulation job encountered an error.");
+      } else {
+        const res = job.result as SimulationResult;
+        setResult(res);
+        setHistory((h) => [res, ...h].slice(0, 4));
+      }
     } catch (e) {
+      clearActiveJob();
+      setActiveJobId(null);
       const msg = e instanceof Error ? e.message : String(e);
       if (msg.includes("429") || msg.toLowerCase().includes("too many candidates")) {
         setErr("⚠️ Too many candidates, please wait. It is running on free version.");
@@ -489,6 +596,7 @@ function SimulatorWorkspace({ catalog, mode }: { catalog: Catalog; mode: "standa
       }
     }
     setRunning(null);
+    setCancelling(false);
   };
 
   const previewIt = async () => {
@@ -775,26 +883,56 @@ function SimulatorWorkspace({ catalog, mode }: { catalog: Catalog; mode: "standa
 
         {running ? (
           <div style={{ marginTop: 12 }}>
-            {activeWorker ? (
-              <div
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  padding: "4px 10px",
-                  borderRadius: "6px",
-                  fontSize: "12px",
-                  fontWeight: 600,
-                  color: "#93c5fd",
-                  background: "rgba(59, 130, 246, 0.15)",
-                  border: "1px solid rgba(59, 130, 246, 0.3)",
-                  marginBottom: "8px",
-                }}
-              >
-                <span>⚡</span>
-                <span>Forwarding request to {activeWorker}</span>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px", flexWrap: "wrap", gap: "6px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                {activeWorker ? (
+                  <div
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      padding: "4px 8px",
+                      borderRadius: "6px",
+                      fontSize: "12px",
+                      fontWeight: 600,
+                      color: "#93c5fd",
+                      background: "rgba(59, 130, 246, 0.15)",
+                      border: "1px solid rgba(59, 130, 246, 0.3)",
+                    }}
+                  >
+                    <span>⚡</span>
+                    <span>{activeWorker}</span>
+                  </div>
+                ) : null}
+                {activeJobId ? (
+                  <span
+                    className="mono"
+                    style={{
+                      fontSize: "11px",
+                      padding: "3px 7px",
+                      borderRadius: "4px",
+                      background: "var(--bg-3)",
+                      border: "1px solid var(--line)",
+                      color: "var(--muted)",
+                    }}
+                    title={`Your active simulation job ID: ${activeJobId}`}
+                  >
+                    Job: {activeJobId.slice(0, 12)}…
+                  </span>
+                ) : null}
               </div>
-            ) : null}
+
+              <button
+                type="button"
+                className="btn-danger"
+                style={{ padding: "4px 10px", fontSize: "11.5px", borderRadius: "5px" }}
+                onClick={handleCancel}
+                disabled={cancelling}
+              >
+                {cancelling ? "Cancelling…" : "⏹️ Cancel"}
+              </button>
+            </div>
+
             <div className="progress">
               <div style={{ width: `${Math.round((running.progress || 0) * 100)}%` }} />
             </div>

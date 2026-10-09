@@ -28,12 +28,18 @@ This project is an **interactive failure and stress-testing simulator for Multi-
    - `POST /api/scenarios/preview`: Render and stream preview of synthetic scene with ground-truth overlays.
    - `POST /api/simulations`: Start asynchronous multi-tracker evaluation job.
    - `GET /api/jobs/{id}`: Poll status, events, natural-language failure diagnostics, and metrics.
+   - `POST /api/jobs/{id}/cancel`: Request cancellation of a queued or running job; triggers cancellation tokens across worker threads and marks job status as `cancelled`.
    - `GET /api/media/{file}`: Retrieve rendered video clips (WebM/MP4) and failure thumbnails.
    - `GET /api/logs/files`: List available server log files.
    - `GET /api/logs`: Paginated log reader with cursor-based pagination.
    - `POST/DELETE /api/clear` (or `/api/cleanup`): Purge generated artifacts (`backend/data/jobs/**/*.mp4`, `backend/data/jobs/**/*.jpg`, `backend/data/scenarios/*.mp4`); protected with `X-Admin-Key` header when `SIM_ADMIN_KEY` is set.
 
-5. **Contributor Guidelines**:
+5. **Client Lifecycle & Tab State Isolation**:
+   - **Per-Tab Job Isolation**: Active job requests are persisted with a unique client tab identifier in browser storage (`sessionStorage` and `localStorage`). If User A starts Job 1 and User B starts Job 2 concurrently in different tabs, each tab retains and tracks its own distinct job ID without state collision.
+   - **Background Tab Persistence**: Navigating away from the tab or switching between workspace views (Standard, Production, Logs) retains the mounted simulator state and polling. Returning to the tab re-synchronizes live job status via `visibilitychange`.
+   - **Refresh & Cancellation Protection**: If a diagnostic simulation is running and the user reloads or navigates away, a `beforeunload` dialog warns that the running worker will be stopped. Upon confirmation, a `sendBeacon` / `keepalive` cancellation token is fired to abort worker threads and free resources.
+
+6. **Contributor Guidelines**:
    - **Pure NumPy/SciPy Implementations**: New trackers must be implemented natively or integrated via standalone pure Python/NumPy logic. Do not introduce dependencies on `ultralytics`, `torch`, or download pretrained weights (`.pt`/`.onnx`).
    - **Local Research Scope**: All functionality must run locally without SaaS hosting dependencies or cloud telemetry.
    - **Tests**: Always accompany new tracker algorithms or scenario mechanics with unit tests in `backend/tests/` that pass with `pytest`.

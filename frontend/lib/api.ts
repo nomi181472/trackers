@@ -79,7 +79,7 @@ export async function pollUntilDone(jobId: string, onProgress: (j: JobStatus) =>
       j = await getJob(jobId);
       notFoundRetries = 0;
       onProgress(j);
-      if (j.status === "done" || j.status === "error") return j;
+      if (j.status === "done" || j.status === "error" || j.status === "cancelled") return j;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       // Allow up to 15 retries (15 * 800ms ~ 12s) while container writes job record to disk
@@ -92,6 +92,43 @@ export async function pollUntilDone(jobId: string, onProgress: (j: JobStatus) =>
     }
     await new Promise((r) => setTimeout(r, 700));
   }
+}
+
+/**
+ * Request cancellation of a running/queued job.
+ * Uses keepalive:true so the request survives a page unload / refresh.
+ */
+export async function cancelJob(jobId: string): Promise<{ job_id: string; status: string }> {
+  const base = getApiBase();
+  const url = base ? `${base}/api/jobs/${jobId}/cancel` : `/api/jobs/${jobId}/cancel`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    keepalive: true, // critical: survives beforeunload
+  });
+  if (!res.ok) {
+    let detail = res.statusText;
+    try { const j = await res.json(); detail = j.detail || detail; } catch { /* ignore */ }
+    throw new Error(`${res.status} ${detail}`);
+  }
+  return res.json();
+}
+
+/**
+ * Fire-and-forget cancel using navigator.sendBeacon (works reliably in beforeunload).
+ * Falls back to keepalive fetch if sendBeacon is unavailable.
+ */
+export function sendBeaconCancel(jobId: string): void {
+  const base = getApiBase();
+  const url = base ? `${base}/api/jobs/${jobId}/cancel` : `/api/jobs/${jobId}/cancel`;
+  try {
+    if (typeof navigator !== "undefined" && navigator.sendBeacon) {
+      navigator.sendBeacon(url);
+      return;
+    }
+  } catch { /* ignore */ }
+  // Fallback: keepalive fetch (fire-and-forget, don't await)
+  fetch(url, { method: "POST", keepalive: true }).catch(() => {});
 }
 
 export function getLogFiles(worker?: string): Promise<{ files: import("./types").LogFileInfo[] }> {

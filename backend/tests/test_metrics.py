@@ -185,3 +185,33 @@ def test_motmetrics_integration_consistency():
     assert mm_m["fp"] == 0
     assert mm_m["fn"] == 0
     assert mm_m["idf1"] == 1.0
+
+
+def test_headline_matches_motmetrics_with_clear_mot_matching():
+    """Verify headline metrics and py-motmetrics numbers agree under track swaps / handoffs."""
+    class _CrossingScenario:
+        def __init__(self):
+            self.meta = {"frames": 2}
+            self.gt = [
+                [dict(id=0, box=[10, 10, 50, 50], visible=True, occluded=False)],
+                [dict(id=0, box=[10, 10, 50, 50], visible=True, occluded=False)],
+            ]
+
+        def target_id(self) -> int:
+            return 0
+
+    # Frame 0: Track 0 on GT 0 (IoU 1.0), Track 1 far away.
+    # Frame 1: Track 0 moves slightly (IoU 0.8), Track 1 moves closer (IoU 0.95).
+    # CLEAR-MOT preserves correspondence Track 0 -> GT 0 rather than swapping.
+    tf = [
+        [Track(0, [10, 10, 50, 50]), Track(1, [200, 200, 240, 240])],
+        [Track(0, [10, 10, 50, 60]), Track(1, [10, 10, 50, 52])],
+    ]
+    df = [np.zeros((0, 5)), np.zeros((0, 5))]
+    res = evaluate(_CrossingScenario(), TRACKER_ID, tf, df)
+
+    m = res.metrics
+    assert "motmetrics" in m
+    mm_m = m["motmetrics"]
+    for key in ("mota", "motp", "idf1", "idsw", "fp", "fn"):
+        assert m[key] == mm_m[key], f"Disagreement on {key}: headline {m[key]} != motmetrics {mm_m[key]}"

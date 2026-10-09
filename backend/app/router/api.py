@@ -245,6 +245,30 @@ def job_status(jid: str):
                                   "message", "detail", "error", "result")}
 
 
+@router.post("/jobs/{jid}/cancel")
+def cancel_job(jid: str):
+    """Request cancellation of a queued or running simulation job.
+
+    - Queued jobs are cancelled immediately (future.cancel).
+    - Running jobs set a cancellation flag; the simulation frame loop checks it
+      at each progress tick and raises JobCancelledError to stop gracefully.
+    - Already-finished jobs (done / error / cancelled) return 409.
+    """
+    j = jobs.get_job(jid)
+    if j is None:
+        raise HTTPException(status_code=404, detail="no such job")
+    current_status = j.get("status")
+    if current_status in ("done", "error", "cancelled"):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Job is already in terminal state: {current_status}",
+        )
+    accepted = jobs.cancel_job(jid)
+    if not accepted:
+        raise HTTPException(status_code=409, detail="Could not cancel job")
+    return {"job_id": jid, "status": "cancelling"}
+
+
 @router.get("/media/{name}")
 def media(name: str):
     candidates = [name]

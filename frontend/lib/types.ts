@@ -163,7 +163,7 @@ export interface SimulationResult {
 export interface JobStatus {
   id: string;
   kind: string;
-  status: "queued" | "running" | "done" | "error";
+  status: "queued" | "running" | "done" | "error" | "cancelled";
   progress: number;
   message?: string;
   error?: string;

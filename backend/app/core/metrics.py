@@ -60,21 +60,47 @@ class EvalResult:
                     runs=self.runs)
 
 
-def _assign(track_boxes, gt_boxes, thr=0.3):
-    """greedy-hungarian IoU assignment. returns list of (ti, gi, iou)."""
+def _assign(track_boxes, gt_boxes, thr=0.3, last_track_of_gt=None, sorted_tids=None, gt_ids=None):
+    """CLEAR-MOT IoU assignment:
+    1. Re-establish tracks from previous correspondences (if IoU >= thr).
+    2. Solve bipartite matching (Hungarian) for remaining objects/hypotheses.
+    Returns list of (ti, gi, iou).
+    """
     pairs = []
     if not len(track_boxes) or not len(gt_boxes):
         return pairs
-    iou = np.zeros((len(track_boxes), len(gt_boxes)))
-    for i, tb in enumerate(track_boxes):
-        for j, gb in enumerate(gt_boxes):
-            iou[i, j] = _iou(tb, gb)
-    if iou.size:
-        ri, ci = linear_sum_assignment(-iou)
-        for i, j in zip(ri, ci):
-            v = iou[i, j]
-            if v >= thr:
-                pairs.append((int(i), int(j), float(v)))
+
+    matched_gt = set()
+    matched_tr = set()
+
+    # Step 1: Carry forward already established correspondences
+    if last_track_of_gt is not None and sorted_tids is not None and gt_ids is not None:
+        tid_to_ti = {tid: i for i, tid in enumerate(sorted_tids)}
+        for gi, gid in enumerate(gt_ids):
+            prev_tid = last_track_of_gt.get(gid)
+            if prev_tid is not None and prev_tid in tid_to_ti:
+                ti = tid_to_ti[prev_tid]
+                v = _iou(track_boxes[ti], gt_boxes[gi])
+                if v >= thr:
+                    pairs.append((int(ti), int(gi), float(v)))
+                    matched_gt.add(gi)
+                    matched_tr.add(ti)
+
+    # Step 2: Bipartite Hungarian matching on remaining
+    rem_tr = [ti for ti in range(len(track_boxes)) if ti not in matched_tr]
+    rem_gt = [gi for gi in range(len(gt_boxes)) if gi not in matched_gt]
+
+    if rem_tr and rem_gt:
+        iou = np.zeros((len(rem_tr), len(rem_gt)))
+        for i, ti in enumerate(rem_tr):
+            for j, gi in enumerate(rem_gt):
+                iou[i, j] = _iou(track_boxes[ti], gt_boxes[gi])
+        if iou.size:
+            ri, ci = linear_sum_assignment(-iou)
+            for i, j in zip(ri, ci):
+                v = iou[i, j]
+                if v >= thr:
+                    pairs.append((int(rem_tr[i]), int(rem_gt[j]), float(v)))
     return pairs
 
 
@@ -155,7 +181,10 @@ def _eval_multi(scenario, tracker_id, track_frames, dets_frames):
                 acc.update([], [], np.empty((0, 0)))
 
         pairs = _assign([track_map[i].box for i in sorted_tids],
-                        [e["box"] for e in visible]) if visible else []
+                        [e["box"] for e in visible],
+                        last_track_of_gt=last_track_of_gt,
+                        sorted_tids=sorted_tids,
+                        gt_ids=gt_ids) if visible else []
         pair_by_gt = {}
         pair_by_tr = {}
         for ti, gi, v in pairs:
@@ -357,19 +386,43 @@ def _eval_multi(scenario, tracker_id, track_frames, dets_frames):
             if np.isneginf(mm_mota) or np.isnan(mm_mota):
                 mm_mota = 0.0
 
+            mm_idf1 = round(float(summary["idf1"].iloc[0]), 3) if not np.isnan(summary["idf1"].iloc[0]) else 0.0
+            mm_idp = round(float(summary["idp"].iloc[0]), 3) if not np.isnan(summary["idp"].iloc[0]) else 0.0
+            mm_idr = round(float(summary["idr"].iloc[0]), 3) if not np.isnan(summary["idr"].iloc[0]) else 0.0
+            mm_idsw = int(summary["num_switches"].iloc[0])
+            mm_fp = int(summary["num_false_positives"].iloc[0])
+            mm_fn = int(summary["num_misses"].iloc[0])
+            mm_mt = int(summary["mostly_tracked"].iloc[0])
+            mm_ml = int(summary["mostly_lost"].iloc[0])
+            mm_pt = int(summary["partially_tracked"].iloc[0])
+
             metrics["motmetrics"] = {
                 "mota": round(max(0.0, mm_mota), 3),
                 "motp": mm_motp,
-                "idf1": round(float(summary["idf1"].iloc[0]), 3) if not np.isnan(summary["idf1"].iloc[0]) else 0.0,
-                "idp": round(float(summary["idp"].iloc[0]), 3) if not np.isnan(summary["idp"].iloc[0]) else 0.0,
-                "idr": round(float(summary["idr"].iloc[0]), 3) if not np.isnan(summary["idr"].iloc[0]) else 0.0,
-                "idsw": int(summary["num_switches"].iloc[0]),
-                "fp": int(summary["num_false_positives"].iloc[0]),
-                "fn": int(summary["num_misses"].iloc[0]),
-                "mt": int(summary["mostly_tracked"].iloc[0]),
-                "ml": int(summary["mostly_lost"].iloc[0]),
-                "pt": int(summary["partially_tracked"].iloc[0]),
+                "idf1": mm_idf1,
+                "idp": mm_idp,
+                "idr": mm_idr,
+                "idsw": mm_idsw,
+                "fp": mm_fp,
+                "fn": mm_fn,
+                "mt": mm_mt,
+                "ml": mm_ml,
+                "pt": mm_pt,
             }
+            # Report the authoritative reference benchmark (py-motmetrics) values as headline metrics
+            metrics.update(
+                mota=round(max(0.0, mm_mota), 3),
+                motp=mm_motp,
+                idf1=mm_idf1,
+                idp=mm_idp,
+                idr=mm_idr,
+                idsw=mm_idsw,
+                fp=mm_fp,
+                fn=mm_fn,
+                mt=mm_mt,
+                ml=mm_ml,
+                pt=mm_pt,
+            )
         except Exception:
             pass
 

@@ -266,6 +266,9 @@ def run_simulation(scenario, specs: list[dict], detection_params: dict,
         latencies_ms = []
         try:
             for t in range(T):
+                # Check for user-requested cancellation at every frame tick
+                if progress and hasattr(progress, "check_cancelled"):
+                    progress.check_cancelled()
                 img = scenario.frames[t]
                 import time
                 if meta["mode"] == "single":
@@ -286,6 +289,9 @@ def run_simulation(scenario, specs: list[dict], detection_params: dict,
                     tick(f"{meta['name']}: frame {t + 1}/{T}",
                          0.1 + 0.8 * ((si * T + t) / max(1, n_total)))
         except Exception as e:  # noqa: BLE001  (one bad tracker must not kill the job)
+            from app.core.jobs import JobCancelledError
+            if isinstance(e, JobCancelledError):
+                raise  # re-raise so _run() sets status=cancelled, not status=error
             results.append(dict(tracker_id=tid, name=meta["name"], tagline=meta["tagline"],
                                 mode=meta["mode"], error=str(e)))
             continue

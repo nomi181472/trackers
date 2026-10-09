@@ -2,7 +2,7 @@ import json
 import logging
 import threading
 import traceback
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 
 from app import config
@@ -14,6 +14,10 @@ logger = logging.getLogger("tracker_app.jobs")
 _lock = threading.Lock()
 _JOBS: dict[str, dict] = {}
 _executor: ThreadPoolExecutor | None = None
+# Map job_id -> Future for queued/running jobs so we can cancel them
+_FUTURES: dict[str, Future] = {}
+# Set of job_ids that have been requested to cancel
+_CANCEL_REQUESTS: set[str] = set()
 
 
 def get_executor() -> ThreadPoolExecutor:
@@ -36,6 +40,11 @@ def shutdown_executor(wait: bool = False, cancel_futures: bool = True) -> None:
 
 class QueueFullError(Exception):
     """Raised when concurrent pending submissions exceed the bounded queue depth."""
+    pass
+
+
+class JobCancelledError(Exception):
+    """Raised inside a running job when a cancellation has been requested."""
     pass
 
 
@@ -126,8 +135,56 @@ def start_job(kind: str, payload: dict, fn) -> str:
 
     _persist_job(job_record)
     logger.info("Job queued: %s (kind=%s, workers=%d, queued=%d)", jid, kind, config.SIM_MAX_WORKERS, queued_count + 1)
-    get_executor().submit(_run, jid, fn)
+    future = get_executor().submit(_run, jid, fn)
+    with _lock:
+        _FUTURES[jid] = future
     return jid
+
+
+def cancel_job(jid: str) -> bool:
+    """Request cancellation of a queued or running job.
+
+    - If the job is still queued (not yet started), the Future is cancelled immediately.
+    - If the job is already running, a cancel flag is set; the frame loop in runner.py
+      will check this flag and raise JobCancelledError at the next tick.
+
+    Returns True if the cancellation was accepted, False if the job was already finished.
+    """
+    with _lock:
+        job = _JOBS.get(jid)
+        if job is None:
+            job = _load_job_from_disk(jid)
+        if job is None:
+            return False
+        status = job.get("status")
+        if status in ("done", "error", "cancelled"):
+            return False
+
+        # Mark cancel intent immediately so the running thread can detect it
+        _CANCEL_REQUESTS.add(jid)
+
+        # If still queued, try to cancel the future outright before it starts
+        future = _FUTURES.get(jid)
+        if future is not None and status == "queued":
+            cancelled = future.cancel()
+            if cancelled:
+                job["status"] = "cancelled"
+                job["message"] = "Cancelled before execution started"
+                job["error"] = "Cancelled by user"
+                job["error_type"] = "JobCancelledError"
+                _JOBS[jid] = job
+                _persist_job(job)
+                logger.info("Job %s cancelled before start (future.cancel succeeded)", jid)
+                return True
+
+    logger.info("Cancellation requested for running job %s", jid)
+    return True
+
+
+def is_job_cancelled(jid: str) -> bool:
+    """Check whether a cancellation has been requested for the given job."""
+    with _lock:
+        return jid in _CANCEL_REQUESTS
 
 
 def _run(jid: str, fn):
@@ -138,6 +195,18 @@ def _run(jid: str, fn):
         if not job:
             logger.warning("Job %s not found on execution start", jid)
             return
+
+        # Check if already cancelled before we even start
+        if is_job_cancelled(jid):
+            with _lock:
+                job["status"] = "cancelled"
+                job["message"] = "Cancelled before execution started"
+                job["error"] = "Cancelled by user"
+                job["error_type"] = "JobCancelledError"
+                _JOBS[jid] = job
+            _persist_job(job)
+            return
+
         job["status"] = "running"
         job["message"] = "Starting"
         with _lock:
@@ -155,6 +224,16 @@ def _run(jid: str, fn):
                 _JOBS[jid] = cur
             _persist_job(cur)
             logger.info("Job %s completed successfully", jid)
+        except JobCancelledError:
+            logger.info("Job %s was cancelled during execution", jid)
+            with _lock:
+                cur = _JOBS.get(jid) or job
+                cur["status"] = "cancelled"
+                cur["message"] = "Cancelled by user"
+                cur["error"] = "Cancelled by user"
+                cur["error_type"] = "JobCancelledError"
+                _JOBS[jid] = cur
+            _persist_job(cur)
         except Exception as e:  # noqa: BLE001
             tb_str = traceback.format_exc()
             err_type = type(e).__name__
@@ -169,6 +248,10 @@ def _run(jid: str, fn):
                 _JOBS[jid] = cur
             _persist_job(cur)
     finally:
+        # Clean up future reference and cancel token
+        with _lock:
+            _FUTURES.pop(jid, None)
+            _CANCEL_REQUESTS.discard(jid)
         request_id_ctx.reset(token)
 
 
@@ -177,6 +260,8 @@ class _ProgressFn:
         self.jid = jid
 
     def __call__(self, message: str, frac: float, detail: str = ""):
+        # Check cancellation first — raises JobCancelledError if requested
+        self.check_cancelled()
         with _lock:
             j = _JOBS.get(self.jid) or _load_job_from_disk(self.jid)
             if j:
@@ -186,6 +271,11 @@ class _ProgressFn:
                     j["detail"] = detail
                 _JOBS[self.jid] = j
                 _persist_job(j)
+
+    def check_cancelled(self):
+        """Raise JobCancelledError if a cancellation has been requested for this job."""
+        if is_job_cancelled(self.jid):
+            raise JobCancelledError(f"Job {self.jid} was cancelled by user request")
 
 
 def get_job(jid: str) -> dict | None:
