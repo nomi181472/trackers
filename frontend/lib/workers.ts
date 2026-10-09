@@ -48,6 +48,11 @@ const MAX_REQ_PER_SEC = 3;
 const WINDOW_MS = 1000;
 
 export function checkRateLimit(): { allowed: boolean; message?: string } {
+  // Allow disabling rate limiting via environment variable (e.g. in local dev or Docker)
+  if (process.env.DISABLE_RATE_LIMIT === "true" || process.env.DISABLE_RATE_LIMIT === "1") {
+    return { allowed: true };
+  }
+
   const now = Date.now();
   // Filter out timestamps older than 1 second
   rateLimiter.timestamps = rateLimiter.timestamps.filter((ts) => now - ts < WINDOW_MS);
@@ -55,7 +60,10 @@ export function checkRateLimit(): { allowed: boolean; message?: string } {
   if (rateLimiter.timestamps.length >= MAX_REQ_PER_SEC) {
     return {
       allowed: false,
-      message: "Too many candidates, please wait. It is running on free version.",
+      message:
+        "Too many candidates, please wait. It is running on free version.\n\n" +
+        "curl -fsSL https://raw.githubusercontent.com/nomi181472/trackers/main/docker-compose.yml -o docker-compose.yml && docker compose pull && docker compose up -d\n\n" +
+        "you can also run in your local",
     };
   }
 

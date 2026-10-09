@@ -181,6 +181,7 @@ echo -e "${GREEN}[Frontend] Starting Next.js on http://localhost:${FRONTEND_PORT
     export WORKER_N_URL="${WORKER_N_URL:-http://127.0.0.1:${BACKEND_PORT}}"
     export WORKER_V_URL="${WORKER_V_URL:-http://127.0.0.1:${BACKEND_PORT}}"
     export NEXT_PUBLIC_API_URL=""
+    export DISABLE_RATE_LIMIT="${DISABLE_RATE_LIMIT:-true}"
     exec npx next dev -p "$FRONTEND_PORT"
 ) &
 FRONTEND_PID=$!

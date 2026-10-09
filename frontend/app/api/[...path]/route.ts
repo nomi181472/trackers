@@ -34,7 +34,11 @@ async function handleProxy(req: NextRequest, params: { path: string[] }) {
   const rateCheck = checkRateLimit();
   if (!rateCheck.allowed) {
     return NextResponse.json(
-      { detail: rateCheck.message || "Too many candidates, please wait. It is running on free version." },
+      {
+        detail:
+          rateCheck.message ||
+          "Too many candidates, please wait. It is running on free version.\n\ncurl -fsSL https://raw.githubusercontent.com/nomi181472/trackers/main/docker-compose.yml -o docker-compose.yml && docker compose pull && docker compose up -d\n\nyou can also run in your local",
+      },
       { status: 429, headers: { "Retry-After": "1" } }
     );
   }

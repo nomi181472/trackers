@@ -590,7 +590,11 @@ function SimulatorWorkspace({ catalog, mode }: { catalog: Catalog; mode: "standa
       setActiveJobId(null);
       const msg = e instanceof Error ? e.message : String(e);
       if (msg.includes("429") || msg.toLowerCase().includes("too many candidates")) {
-        setErr("⚠️ Too many candidates, please wait. It is running on free version.");
+        setErr(
+          "⚠️ Too many candidates, please wait. It is running on free version.\n\n" +
+          "curl -fsSL https://raw.githubusercontent.com/nomi181472/trackers/main/docker-compose.yml -o docker-compose.yml && docker compose pull && docker compose up -d\n\n" +
+          "you can also run in your local"
+        );
       } else {
         setErr(msg);
       }
@@ -869,7 +873,11 @@ function SimulatorWorkspace({ catalog, mode }: { catalog: Catalog; mode: "standa
           <TrackerPicker catalog={catalog} selected={selected} setSelected={setSelected} />
         </div>
 
-        {err ? <div className="err" style={{ marginTop: 14 }}>{err}</div> : null}
+        {err ? (
+          <div className="err" style={{ marginTop: 14, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+            {err}
+          </div>
+        ) : null}
 
         {/* Execution Button */}
         <button
