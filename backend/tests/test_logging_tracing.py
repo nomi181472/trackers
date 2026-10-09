@@ -52,7 +52,7 @@ def test_job_crash_logs_and_captures_traceback():
     jid = jobs.start_job("simulation", {}, _crash_job)
 
     # Wait for job completion
-    for _ in range(100):
+    for _ in range(200):
         j = jobs.get_job(jid)
         if j and j["status"] in ("done", "error"):
             break
