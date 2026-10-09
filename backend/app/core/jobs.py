@@ -11,9 +11,27 @@ from app.logging_config import request_id_ctx
 
 logger = logging.getLogger("tracker_app.jobs")
 
-_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="job")
 _lock = threading.Lock()
 _JOBS: dict[str, dict] = {}
+_executor = ThreadPoolExecutor(max_workers=config.SIM_MAX_WORKERS, thread_name_prefix="job")
+
+
+class QueueFullError(Exception):
+    """Raised when concurrent pending submissions exceed the bounded queue depth."""
+    pass
+
+
+def get_executor_stats() -> dict:
+    """Return current concurrency metrics for diagnostics and UI status."""
+    with _lock:
+        active_running = sum(1 for j in _JOBS.values() if j.get("status") == "running")
+        pending_queued = sum(1 for j in _JOBS.values() if j.get("status") == "queued")
+    return {
+        "max_workers": config.SIM_MAX_WORKERS,
+        "max_queue_size": config.SIM_MAX_QUEUE_SIZE,
+        "running_jobs": active_running,
+        "queued_jobs": pending_queued,
+    }
 
 
 def _job_file_path(jid: str) -> Path:
@@ -31,7 +49,7 @@ def _persist_job(job: dict) -> None:
             json.dump(job, f)
         tmp_path.replace(path)
     except Exception as e:
-        logger.warning("Could not persist job %s to disk: %e", job.get("id"), e)
+        logger.warning("Could not persist job %s to disk: %s", job.get("id"), e)
 
 
 def _load_job_from_disk(jid: str) -> dict | None:
@@ -46,15 +64,50 @@ def _load_job_from_disk(jid: str) -> dict | None:
     return None
 
 
+def recover_interrupted_jobs() -> int:
+    """Scan disk for jobs left in 'running' or 'queued' state across process restarts and mark them as errored."""
+    recovered = 0
+    if not config.JOBS_DIR.exists():
+        return recovered
+    for p in config.JOBS_DIR.glob("*.json"):
+        try:
+            with open(p, "r", encoding="utf-8") as f:
+                rec = json.load(f)
+            if rec.get("status") in ("running", "queued"):
+                rec["status"] = "error"
+                rec["error"] = "Job interrupted by process restart"
+                rec["error_type"] = "ProcessRestartError"
+                rec["message"] = "Execution interrupted by server or process restart"
+                with _lock:
+                    _JOBS[rec["id"]] = rec
+                _persist_job(rec)
+                recovered += 1
+                logger.info("Marked interrupted job %s as failed after restart", rec["id"])
+        except Exception as e:
+            logger.warning("Could not check/recover job file %s: %s", p, e)
+    return recovered
+
+
 def start_job(kind: str, payload: dict, fn) -> str:
-    jid = new_id()
-    job_record = dict(id=jid, kind=kind, status="queued", progress=0.0,
-                      message="Queued", result=None, error=None, traceback=None,
-                      error_type=None, payload=payload)
     with _lock:
+        queued_count = sum(1 for j in _JOBS.values() if j.get("status") == "queued")
+        if queued_count >= config.SIM_MAX_QUEUE_SIZE:
+            logger.warning(
+                "Job admission rejected: queue depth (%d) reached capacity limit (%d)",
+                queued_count, config.SIM_MAX_QUEUE_SIZE,
+            )
+            raise QueueFullError(
+                f"Job queue is full ({queued_count}/{config.SIM_MAX_QUEUE_SIZE} queued). Please wait for ongoing tasks to finish."
+            )
+
+        jid = new_id()
+        job_record = dict(id=jid, kind=kind, status="queued", progress=0.0,
+                          message="Queued", result=None, error=None, traceback=None,
+                          error_type=None, payload=payload)
         _JOBS[jid] = job_record
+
     _persist_job(job_record)
-    logger.info("Job queued: %s (kind=%s)", jid, kind)
+    logger.info("Job queued: %s (kind=%s, workers=%d, queued=%d)", jid, kind, config.SIM_MAX_WORKERS, queued_count + 1)
     _executor.submit(_run, jid, fn)
     return jid
 

@@ -12,11 +12,12 @@
 **A visual & programmatic stress-testing simulator to uncover *why*, *when*, and *how* Computer Vision trackers fail.**  
 Stop debugging tracker regressions in production. Benchmark **18 tracking algorithms** under mathematically controlled perturbations (severe occlusions, path crossing, camera jitter, motion blur, and visual look-alikes).
 
-[Why This Matters for Your Apps](#-why-this-helps-in-your-industry-applications) • [Interactive Showcase](#-multi-object-tracking-in-action) • [Benchmark Trade-Offs](#-deep-dive-benchmarks--trade-off-analysis) • [Supported Trackers (18)](#-tracker-catalog--algorithm-architectures-18) • [Adding Custom Trackers](#-adding-a-custom-tracker-integration) • [API Guide](#-rest-api-reference) • [References & Citations](#-references--citations)
+[Why This Matters for Your Apps](#-why-this-helps-in-your-industry-applications) • [Interactive Showcase](#-multi-object-tracking-in-action) • [Benchmark Trade-Offs](#-deep-dive-benchmarks--trade-off-analysis) • [Supported Trackers (18)](#-tracker-catalog--algorithm-architectures-18) • [Adding Custom Trackers](#-adding-a-custom-tracker-integration) • [Contributing](#-contributing) • [API Guide](#-rest-api-reference) • [References & Citations](#-references--citations)
 
 </div>
 
----
+> [!IMPORTANT]
+> **Local-Only Diagnostic & Research Tool**: This project is built strictly as a locally runnable research, development, and diagnostic lab. It is **not** designed, intended, or licensed for hosted SaaS deployment, multi-tenant cloud services, or commercial product offerings.
 
 ## 💡 Why This Helps In Your Industry Applications
 
@@ -610,6 +611,53 @@ If you use this benchmark simulator or any of the tracker implementations in you
 
 * **IDF1 Metric**  
   > Ristani, E., Solera, F., Zou, R. S., Cucchiara, R., & Tomasi, C. (2016). *Performance Measures and a Data Set for Multi-Target, Multi-Camera Tracking*. European Conference on Computer Vision (ECCV) Workshops.
+
+---
+
+## 🤝 Contributing
+
+Contributions, bug fixes, diagnostic metric improvements, and new tracking algorithm implementations are welcome!
+
+### Core Contribution Principles
+1. **Simulation-First & Standalone**:
+   - MOT engines must run natively in Python using NumPy, SciPy, or OpenCV without external deep learning checkpoints (`.pt`, `.onnx`, `.pth`) or large framework downloads (`torch`).
+   - All trackers evaluated side-by-side must rely strictly on the synthetic detection stream provided by `SimDetector`.
+2. **Local-Only Tooling**:
+   - The simulator is strictly for local research and testing. Do not add cloud SaaS multi-tenancy, telemetry trackers, or external hosted services.
+3. **Fair Benchmarking & Testing**:
+   - Add parameter definitions and default schemas in the plugin registry (`backend/app/core/plugins/`).
+   - Maintain unit test coverage under `backend/tests/`. All pull requests must pass `pytest` and frontend build checks.
+
+### Development Workflow
+1. **Clone the Repository**:
+   ```bash
+   git clone https://github.com/nomi181472/trackers.git
+   cd trackers
+   ```
+2. **Backend Setup**:
+   ```bash
+   cd backend
+   python -m venv .venv
+   source .venv/bin/activate
+   pip install -r requirements.txt
+   pytest
+   ```
+3. **Frontend Setup**:
+   ```bash
+   cd ../frontend
+   npm install
+   npm run build
+   ```
+4. **Run the Diagnostic Suite**:
+   ```bash
+   # From root directory:
+   ./start.sh
+   # Open http://localhost:3000 in your browser
+   ```
+5. **Submitting Changes**:
+   - Create a feature branch (`git checkout -b feat/new-tracker`).
+   - Run tests: `pytest` in `backend/` and `npm run build` in `frontend/`.
+   - Submit a Pull Request describing your changes and benchmarks.
 
 ---
 

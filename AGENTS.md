@@ -32,3 +32,8 @@ This project is an **interactive failure and stress-testing simulator for Multi-
    - `GET /api/logs/files`: List available server log files.
    - `GET /api/logs`: Paginated log reader with cursor-based pagination.
    - `POST/DELETE /api/clear` (or `/api/cleanup`): Purge generated artifacts (`backend/data/jobs/**/*.mp4`, `backend/data/jobs/**/*.jpg`, `backend/data/scenarios/*.mp4`); protected with `X-Admin-Key` header when `SIM_ADMIN_KEY` is set.
+
+5. **Contributor Guidelines**:
+   - **Pure NumPy/SciPy Implementations**: New trackers must be implemented natively or integrated via standalone pure Python/NumPy logic. Do not introduce dependencies on `ultralytics`, `torch`, or download pretrained weights (`.pt`/`.onnx`).
+   - **Local Research Scope**: All functionality must run locally without SaaS hosting dependencies or cloud telemetry.
+   - **Tests**: Always accompany new tracker algorithms or scenario mechanics with unit tests in `backend/tests/` that pass with `pytest`.

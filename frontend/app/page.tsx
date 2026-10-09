@@ -248,6 +248,14 @@ export default function Home() {
         </div>
       </div>
 
+      {/* Local-Only Execution Notice Banner */}
+      <div className="local-notice">
+        <div>
+          <span>🛡️ <b>Local Diagnostic Tool</b>: Designed strictly for local research and development benchmarking. Not intended or licensed for SaaS or commercial deployment.</span>
+        </div>
+        <span style={{ fontSize: "11px", opacity: 0.8, whiteSpace: "nowrap" }}>Local Execution Only</span>
+      </div>
+
       {clearStatus ? (
         <div className="panel" style={{ marginBottom: "16px", padding: "10px 16px", borderLeft: "4px solid #10b981", color: "#6ee7b7", background: "rgba(16, 185, 129, 0.1)" }}>
           ✓ {clearStatus}

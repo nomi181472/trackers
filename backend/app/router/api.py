@@ -159,7 +159,14 @@ def start_simulation(payload: dict):
         specs.append({"tracker_id": tid, "params": params})
     payload["trackers"] = specs
 
-    jid = jobs.start_job("simulation", payload, _run_simulation_job)
+    try:
+        jid = jobs.start_job("simulation", payload, _run_simulation_job)
+    except jobs.QueueFullError as e:
+        raise HTTPException(
+            status_code=429,
+            detail=str(e),
+            headers={"Retry-After": "2"},
+        ) from e
     return {"job_id": jid}
 
 

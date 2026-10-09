@@ -9,11 +9,13 @@ import time
 import traceback
 import uuid
 
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from app.core import jobs
 from app.logging_config import request_id_ctx, setup_logging
 from app.router.api import router
 
@@ -21,6 +23,18 @@ from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
 
 # Initialize global structured logger and exception hooks
 logger = setup_logging(logging.INFO)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # On process boot: recover any jobs that were left running or queued before process restart
+    recovered = jobs.recover_interrupted_jobs()
+    if recovered:
+        logger.info("Server startup: recovered %d interrupted job(s) from previous process", recovered)
+    yield
+    # On process shutdown: cleanly shutdown worker threads
+    jobs._executor.shutdown(wait=False, cancel_futures=True)
+
 
 app = FastAPI(
     title="Tracker Failure Simulator API",
@@ -30,6 +44,7 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/openapi.json",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
