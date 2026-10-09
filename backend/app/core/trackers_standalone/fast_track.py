@@ -517,6 +517,12 @@ class TrackTrack(BYTETracker):
 
         u_detection = [u_detection[i] for i in u_rem_detection]
         r_tracked_stracks = [confirmed_tracked[i] for i in u_conf_track]
+
+        # Step 2: Second-chance matching for low-confidence detections with penalty_p
+        detections_second = [
+            TrackTrackSTrack(box, score, c, f)
+            for (box, score, c, f) in zip(_to_xywh_with_idx(dets_second, idx_second), scores_second, cls_second, feats_second)
+        ]
         matches, u_track_second, _ = self._iterative_assignment(
             r_tracked_stracks, detections_second,
             base_thresh=0.5,

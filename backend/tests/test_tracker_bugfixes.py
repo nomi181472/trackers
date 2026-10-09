@@ -223,3 +223,70 @@ def test_opencv_cache_refresh():
     assert OpenCVSingleTracker.AVAILABLE is None
 
 
+def test_byte_tracker_multi_predict_zeroes_all_velocities():
+    from app.core.trackers_standalone.byte_tracker import STrack
+    from app.core.trackers_standalone.basetrack import TrackState
+
+    st = STrack(np.array([100, 100, 50, 50]), 0.9, 0)
+    st.activate(STrack.shared_kalman, 1)
+    st.state = TrackState.Lost
+    st.mean[4:8] = np.array([5.0, -3.0, 0.5, 2.0])
+
+    STrack.multi_predict([st])
+    np.testing.assert_allclose(st.mean[4:8], np.zeros(4), atol=1e-5)
+
+
+def test_metrics_assign_maintains_consistent_track_order():
+    from app.core.metrics import _assign
+    from app.core.trackers import Track
+
+    track_map = {
+        10: Track(id=10, box=[0, 0, 10, 10], score=0.9, cls=0),
+        2: Track(id=2, box=[100, 100, 110, 110], score=0.9, cls=0),
+        5: Track(id=5, box=[50, 50, 60, 60], score=0.9, cls=0),
+    }
+    sorted_tids = sorted(track_map.keys())
+    visible = [
+        {"id": 1, "box": [100, 100, 110, 110]},  # Matches track 2
+        {"id": 2, "box": [0, 0, 10, 10]},        # Matches track 10
+    ]
+    pairs = _assign([track_map[i].box for i in sorted_tids], [e["box"] for e in visible])
+    matches = {sorted_tids[ti]: e_idx for ti, e_idx, _ in pairs}
+    assert matches[2] == 0
+    assert matches[10] == 1
+
+
+def test_tracktrack_lost_match_thr_only_affects_lost():
+    from app.core.trackers_standalone.fast_track import TrackTrack
+    from app.core.trackers_standalone.basetrack import TrackState
+
+    args = SimpleNamespace(
+        track_high_thresh=0.5,
+        track_low_thresh=0.1,
+        new_track_thresh=0.6,
+        track_buffer=30,
+        match_thresh=0.4,
+        lost_match_thr=0.9,  # Very relaxed threshold, should not apply to confirmed tracks
+        min_track_len=1,
+        reduce_step=0.0,
+        iou_weight=1.0,
+        reid_weight=0.0,
+        conf_weight=0.0,
+        angle_weight=0.0,
+        penalty_p=0.0,
+        penalty_q=0.0,
+        tai_thr=0.0,
+        with_reid=False,
+    )
+    tracker = TrackTrack(args, frame_rate=30)
+    # Frame 1: Create active track
+    tracker.update(np.array([[10, 10, 50, 50, 0.9, 0]]))
+    assert len(tracker.tracked_stracks) == 1
+    tr = tracker.tracked_stracks[0]
+
+    # Frame 2: Confirmed track should NOT match far-away detection using lost_match_thr (0.9)
+    # With match_thresh=0.4, the far box won't match, so track becomes lost
+    tracker.update(np.array([[200, 200, 250, 250, 0.9, 0]]))
+    assert tr.state == TrackState.Lost
+
+

@@ -220,6 +220,9 @@ class VectorEmbedderEngine(Engine):
             if tr["time_since_update"] > self.max_age:
                 dead_ids.append(tid)
                 continue
+            if tr["time_since_update"] > 0 and tr["kind"] == "tentative":
+                dead_ids.append(tid)
+                continue
 
             if tr["time_since_update"] == 0 and tr["kind"] == "confirmed":
                 active_tracks.append(
