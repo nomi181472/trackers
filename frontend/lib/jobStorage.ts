@@ -21,6 +21,7 @@ import type { ParamValues } from "./types";
 /** Shape of the persisted active job record */
 export interface ActiveJobRecord {
   jobId: string;
+  tabId?: string; // which tab created this job
   worker: string | null;
   mode: "standard" | "production";
   startedAt: number; // unix ms
@@ -29,11 +30,10 @@ export interface ActiveJobRecord {
 }
 
 const TAB_ID_KEY = "tracker_tab_id";
-const JOB_KEY_PREFIX = "tracker_active_job_";
+const SHARED_JOB_KEY = "tracker_active_job";
 
 /** Get or create a stable tab-unique identifier. */
-function getTabId(): string {
-  // sessionStorage is tab-scoped; perfect for a unique tab ID
+export function getTabId(): string {
   try {
     let id = sessionStorage.getItem(TAB_ID_KEY);
     if (!id) {
@@ -42,8 +42,6 @@ function getTabId(): string {
     }
     return id;
   } catch {
-    // If storage is blocked (e.g. private browsing restrictions), fall back to
-    // a module-level variable that survives for the lifetime of the page.
     return _fallbackTabId;
   }
 }
@@ -51,34 +49,30 @@ function getTabId(): string {
 // Module-level fallback (reset on every page load, so acts like sessionStorage)
 const _fallbackTabId = `tab_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
-function storageKey(): string {
-  return `${JOB_KEY_PREFIX}${getTabId()}`;
-}
-
-/** Persist the active job record for this browser tab. */
+/** Persist the active job record across browser tabs. */
 export function saveActiveJob(record: ActiveJobRecord): void {
-  const key = storageKey();
-  const serialised = JSON.stringify(record);
-  try { sessionStorage.setItem(key, serialised); } catch { /* ignore */ }
-  try { localStorage.setItem(key, serialised); } catch { /* ignore */ }
+  const payload: ActiveJobRecord = {
+    ...record,
+    tabId: record.tabId || getTabId(),
+  };
+  const serialised = JSON.stringify(payload);
+  try { sessionStorage.setItem(SHARED_JOB_KEY, serialised); } catch { /* ignore */ }
+  try { localStorage.setItem(SHARED_JOB_KEY, serialised); } catch { /* ignore */ }
 }
 
 /**
- * Read back the active job for this tab.
- * Falls through sessionStorage → localStorage so a page refresh still recovers it.
+ * Read back the active job across browser tabs.
  * Returns null if no active job is stored or the record has expired (> 2 hours old).
  */
 export function getActiveJob(): ActiveJobRecord | null {
-  const key = storageKey();
   let raw: string | null = null;
-  try { raw = sessionStorage.getItem(key); } catch { /* ignore */ }
+  try { raw = localStorage.getItem(SHARED_JOB_KEY); } catch { /* ignore */ }
   if (!raw) {
-    try { raw = localStorage.getItem(key); } catch { /* ignore */ }
+    try { raw = sessionStorage.getItem(SHARED_JOB_KEY); } catch { /* ignore */ }
   }
   if (!raw) return null;
   try {
     const record = JSON.parse(raw) as ActiveJobRecord;
-    // Discard stale records older than 2 hours to avoid zombie state
     const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
     if (Date.now() - record.startedAt > TWO_HOURS_MS) {
       clearActiveJob();
@@ -92,11 +86,9 @@ export function getActiveJob(): ActiveJobRecord | null {
 }
 
 /**
- * Remove the active job record for this tab.
- * Call this when the job is finished, cancelled, or on explicit user clear.
+ * Remove the active job record from browser storage.
  */
 export function clearActiveJob(): void {
-  const key = storageKey();
-  try { sessionStorage.removeItem(key); } catch { /* ignore */ }
-  try { localStorage.removeItem(key); } catch { /* ignore */ }
+  try { sessionStorage.removeItem(SHARED_JOB_KEY); } catch { /* ignore */ }
+  try { localStorage.removeItem(SHARED_JOB_KEY); } catch { /* ignore */ }
 }

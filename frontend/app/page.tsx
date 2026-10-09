@@ -8,7 +8,7 @@ import { TrackerPicker } from "@/components/trackerPicker";
 import { ResultsView, CompareTable } from "@/components/results";
 import { LogsView } from "@/components/logsView";
 import type { JobStatus } from "@/lib/types";
-import { saveActiveJob, getActiveJob, clearActiveJob } from "@/lib/jobStorage";
+import { saveActiveJob, getActiveJob, clearActiveJob, getTabId } from "@/lib/jobStorage";
 
 /* ------------------------------------------------------------------ */
 /* Presets: Standard & Production                                     */
@@ -423,6 +423,8 @@ function SimulatorWorkspace({ catalog, mode }: { catalog: Catalog; mode: "standa
   const [err, setErr] = useState<string | null>(null);
   const [showAdvancedDet, setShowAdvancedDet] = useState(false);
 
+  const [isExternalTab, setIsExternalTab] = useState<boolean>(false);
+
   // Stable ref so event handlers always see the current jobId without stale closure
   const activeJobIdRef = useRef<string | null>(null);
   activeJobIdRef.current = activeJobId;
@@ -460,18 +462,17 @@ function SimulatorWorkspace({ catalog, mode }: { catalog: Catalog; mode: "standa
     setSelected(defaults);
   }, [catalog]);
 
-  // ── On mount: restore any active job this tab had before a tab-switch / focus loss ──
-  useEffect(() => {
-    const saved = getActiveJob();
-    if (!saved) return;
-    // Job IDs are unique per-tab via jobStorage, so this is always this user's job
-    setActiveJobId(saved.jobId);
-    if (saved.worker) setActiveWorker(saved.worker);
-    // Reattach polling — updates progress bar and fetches result when done
-    pollUntilDone(saved.jobId, setRunning)
+  // ── Attach to and poll an active job ──
+  const attachToJob = useCallback((savedJobId: string, savedWorker?: string | null, isFromOtherTab: boolean = false) => {
+    setActiveJobId(savedJobId);
+    if (savedWorker) setActiveWorker(savedWorker);
+    setIsExternalTab(isFromOtherTab);
+
+    pollUntilDone(savedJobId, setRunning)
       .then((job) => {
         clearActiveJob();
         setActiveJobId(null);
+        setIsExternalTab(false);
         if (job.status === "done" && job.result) {
           const res = job.result as SimulationResult;
           setResult(res);
@@ -482,10 +483,60 @@ function SimulatorWorkspace({ catalog, mode }: { catalog: Catalog; mode: "standa
           setErr(job.error || "Simulation job encountered an error.");
         }
       })
-      .catch(() => { clearActiveJob(); setActiveJobId(null); })
-      .finally(() => { setRunning(null); setCancelling(false); });
+      .catch((e) => {
+        // If the job no longer exists (container restarted or job purged), silently clear without false alarm
+        clearActiveJob();
+        setActiveJobId(null);
+        setIsExternalTab(false);
+        const errMsg = e instanceof Error ? e.message : String(e);
+        if (!errMsg.includes("404") && !errMsg.toLowerCase().includes("no such job")) {
+          setErr(errMsg);
+        }
+      })
+      .finally(() => {
+        setRunning(null);
+        setCancelling(false);
+      });
+  }, []);
+
+  // ── On mount: restore any active job this tab had before a tab-switch / focus loss ──
+  useEffect(() => {
+    const saved = getActiveJob();
+    if (!saved) return;
+    const isOtherTab = Boolean(saved.tabId && saved.tabId !== getTabId());
+    attachToJob(saved.jobId, saved.worker, isOtherTab);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // run once on mount only
+
+  // ── Cross-tab synchronization via storage event ──
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== "tracker_active_job") return;
+      if (!e.newValue) {
+        // Job was cleared/finished by another tab
+        if (isExternalTab) {
+          setActiveJobId(null);
+          setRunning(null);
+          setIsExternalTab(false);
+        }
+        return;
+      }
+      try {
+        const record = JSON.parse(e.newValue);
+        if (record && record.jobId) {
+          const isOtherTab = Boolean(record.tabId && record.tabId !== getTabId());
+          // If we are not currently running this job, attach to it
+          if (activeJobIdRef.current !== record.jobId) {
+            attachToJob(record.jobId, record.worker, isOtherTab);
+          }
+        }
+      } catch {
+        /* ignore invalid storage format */
+      }
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, [attachToJob, isExternalTab]);
 
   // ── beforeunload: warn user if a simulation is running and cancel on confirm ──
   useEffect(() => {
@@ -886,13 +937,39 @@ function SimulatorWorkspace({ catalog, mode }: { catalog: Catalog; mode: "standa
           onClick={run}
           disabled={running !== null}
         >
-          {running ? "Simulating Trackers…" : isProduction ? "▶ Run Production Benchmark" : "▶ Run Diagnostic Simulation"}
+          {running
+            ? isExternalTab
+              ? "⏳ Simulation Running in Another Tab…"
+              : "Simulating Trackers…"
+            : isProduction
+            ? "▶ Run Production Benchmark"
+            : "▶ Run Diagnostic Simulation"}
         </button>
 
         {running ? (
           <div style={{ marginTop: 12 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px", flexWrap: "wrap", gap: "6px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                {isExternalTab ? (
+                  <div
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      padding: "4px 8px",
+                      borderRadius: "6px",
+                      fontSize: "12px",
+                      fontWeight: 600,
+                      color: "#fbbf24",
+                      background: "rgba(245, 158, 11, 0.15)",
+                      border: "1px solid rgba(245, 158, 11, 0.3)",
+                    }}
+                    title="This simulation was initiated from another open browser tab"
+                  >
+                    <span>📑</span>
+                    <span>Running in Another Tab</span>
+                  </div>
+                ) : null}
                 {activeWorker ? (
                   <div
                     style={{
