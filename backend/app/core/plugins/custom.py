@@ -36,12 +36,14 @@ class _KalmanBox:
 
     def __init__(self, box):
         self._update_mat = np.eye(self._NDIM, 2 * self._NDIM)
-        self._Q = np.diag(np.r_[np.full(self._NDIM, self._STD_POS),
-                                np.full(self._NDIM, self._STD_VEL)] ** 2)
-        self._R = np.eye(self._NDIM) * self._STD_POS**2
         self.x = np.zeros((2 * self._NDIM, 1))
-        self.P = np.diag(np.r_[np.full(self._NDIM, 10.0), np.full(self._NDIM, 1000.0)])
         self.x[:self._NDIM, 0] = self._to_z(box)
+
+        # Scale initial state uncertainty P proportionally to bounding box height
+        h = max(float(self.x[3, 0]), 1e-4)
+        scale = h / 20.0
+        self.P = np.diag(np.r_[np.full(self._NDIM, 10.0 * scale**2),
+                               np.full(self._NDIM, 1000.0 * scale**2)])
 
     @staticmethod
     def _to_z(box) -> np.ndarray:
@@ -60,20 +62,30 @@ class _KalmanBox:
         return cls(box)
 
     def predict(self) -> None:
+        # Dynamically scale process noise covariance Q proportionally to bounding box height
+        h = max(float(self.x[3, 0]), 1e-4)
+        scale = h / 20.0
+        q_mat = np.diag(np.r_[np.full(self._NDIM, self._STD_POS * scale),
+                              np.full(self._NDIM, self._STD_VEL * scale)] ** 2)
         self.x = self._MOTION @ self.x
-        self.P = self._MOTION @ self.P @ self._MOTION.T + self._Q
+        self.P = self._MOTION @ self.P @ self._MOTION.T + q_mat
 
     def predict_box(self) -> list:
         return self._to_bbox(self.x[:self._NDIM, 0])
 
     def update(self, box) -> None:
+        # Dynamically scale measurement noise covariance R proportionally to bounding box height
+        h = max(float(self.x[3, 0]), 1e-4)
+        scale = h / 20.0
+        r_mat = np.eye(self._NDIM) * (self._STD_POS * scale) ** 2
+
         z = self._to_z(box).reshape(-1, 1)
         y = z - self._update_mat @ self.x
-        S = self._update_mat @ self.P @ self._update_mat.T + self._R
+        S = self._update_mat @ self.P @ self._update_mat.T + r_mat
         K = self.P @ self._update_mat.T @ np.linalg.inv(S)
         self.x = self.x + K @ y
         I_KH = np.eye(len(self.x)) - K @ self._update_mat
-        self.P = I_KH @ self.P @ I_KH.T + K @ self._R @ K.T
+        self.P = I_KH @ self.P @ I_KH.T + K @ r_mat @ K.T
 
 
 class CustomTrackerBase(Engine):

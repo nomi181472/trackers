@@ -315,4 +315,23 @@ def test_tentative_tracks_purged_immediately_on_miss():
     assert len(embed_eng.tracks) == 0
 
 
+def test_kalman_box_dynamic_covariance_scaling():
+    """Verify that _KalmanBox scales Q and R covariances with bounding box height."""
+    small_box = [0, 0, 10, 10]
+    large_box = [0, 0, 100, 100]
 
+    kf_small = _KalmanBox.initiate(small_box)
+    kf_large = _KalmanBox.initiate(large_box)
+
+    # Initial P covariance should be scaled with height (large has 10x height, so 100x covariance)
+    assert np.isclose(kf_large.P[0, 0] / kf_small.P[0, 0], 100.0)
+
+    # Step predict: large track should have higher process covariance update
+    kf_small.predict()
+    kf_large.predict()
+    assert kf_large.P[0, 0] > kf_small.P[0, 0]
+
+    # Step update: large track should have scaled innovation covariance
+    kf_small.update([1, 1, 11, 11])
+    kf_large.update([10, 10, 110, 110])
+    assert kf_large.P[0, 0] > kf_small.P[0, 0]
