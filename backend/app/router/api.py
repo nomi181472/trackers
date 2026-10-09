@@ -49,20 +49,66 @@ def list_trackers():
     }
 
 
+def _validate_scenario(cfg: dict) -> dict:
+    """Validate scenario configuration parameters and resource bounds."""
+    params = dict(cfg)
+    # 1. Dimensions
+    width = int(params.get("width", 640))
+    height = int(params.get("height", 640))
+    if width < 64 or width > 1920:
+        raise HTTPException(status_code=400, detail="width must be between 64 and 1920")
+    if height < 64 or height > 1920:
+        raise HTTPException(status_code=400, detail="height must be between 64 and 1920")
+
+    # 2. FPS & Duration
+    fps = int(params.get("fps", 15))
+    if fps < 1 or fps > 60:
+        raise HTTPException(status_code=400, detail="fps must be between 1 and 60")
+
+    duration = float(params.get("duration_seconds", 8.0))
+    if duration <= 0 or duration > 60:
+        raise HTTPException(status_code=400, detail="duration_seconds must be between 0 and 60")
+
+    # 3. Object count
+    num_objects = int(params.get("num_objects", 6 if "num_objects" not in params else params["num_objects"]))
+    if num_objects < 1 or num_objects > 50:
+        raise HTTPException(status_code=400, detail="num_objects must be between 1 and 50")
+
+    # 4. Effective frame count: if frames is explicitly passed, validate it;
+    # otherwise or additionally ensure the computed duration * fps is bounded.
+    if "frames" in params and params["frames"] is not None:
+        frames = int(params["frames"])
+        if frames < 1 or frames > 600:
+            raise HTTPException(status_code=400, detail="frames must be between 1 and 600")
+    else:
+        frames = max(2, int(duration * fps))
+        if frames < 1 or frames > 600:
+            raise HTTPException(status_code=400, detail="computed frames (duration_seconds * fps) must be between 1 and 600")
+        params["frames"] = frames
+
+    # 5. Combined resource cost limit
+    # (Frames * Width * Height: cap buffer memory, e.g. max 600 frames * 640 * 640 ≈ 2.45e8 pixels; max 300,000,000)
+    total_pixels = frames * width * height
+    MAX_TOTAL_PIXELS = 300_000_000
+    if total_pixels > MAX_TOTAL_PIXELS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Scenario workload too large ({total_pixels:,} total pixels; limit is {MAX_TOTAL_PIXELS:,})"
+        )
+
+    return params
+
+
 @router.post("/scenarios/preview")
 def scenario_preview(payload: dict):
     """Build a scenario and render a preview clip with ground-truth overlay."""
     import gc
-    params = {**payload}
+    params = _validate_scenario(payload)
     params.setdefault("seed", 7)
-    frames = int(params.get("frames", 120))
-    if frames < 1 or frames > 600:
-        raise HTTPException(status_code=400, detail="frames must be between 1 and 600")
-    num_objects = int(params.get("num_objects", 6))
-    if num_objects < 1 or num_objects > 50:
-        raise HTTPException(status_code=400, detail="num_objects must be between 1 and 50")
     try:
         sc = Scenario(params)
+    except HTTPException:
+        raise
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=f"Bad scenario: {e}") from e
     jid = config.new_id()
@@ -86,12 +132,8 @@ def scenario_preview(payload: dict):
 def start_simulation(payload: dict):
     """payload: {scenario: {...}, detection: {...}, trackers: [{tracker_id, params}]}"""
     scenario_cfg = payload.get("scenario") or {}
-    frames = int(scenario_cfg.get("frames", 120))
-    if frames < 1 or frames > 600:
-        raise HTTPException(status_code=400, detail="frames must be between 1 and 600")
-    num_objects = int(scenario_cfg.get("num_objects", 6))
-    if num_objects < 1 or num_objects > 50:
-        raise HTTPException(status_code=400, detail="num_objects must be between 1 and 50")
+    validated_scenario = _validate_scenario(scenario_cfg)
+    payload["scenario"] = validated_scenario
 
     raw_trackers = payload.get("trackers", [])
     if not raw_trackers:

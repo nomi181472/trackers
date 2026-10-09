@@ -177,3 +177,49 @@ def test_cleanup_admin_key_protection(client, monkeypatch):
     r_authorized = client.post("/api/clear", headers={"X-Admin-Key": "super-secret-key"})
     assert r_authorized.status_code == 200
     assert r_authorized.json()["ok"] is True
+
+
+def test_workload_validation_rejects_excessive_duration_or_fps(client):
+    # excessive duration
+    r = client.post("/api/simulations", json={
+        "scenario": {"seed": 1, "duration_seconds": 120, "fps": 10},
+        "trackers": [{"tracker_id": "greedy_iou"}],
+    })
+    assert r.status_code == 400
+    assert "duration_seconds must be between 0 and 60" in r.json()["detail"]
+
+    # excessive fps
+    r = client.post("/api/simulations", json={
+        "scenario": {"seed": 1, "fps": 100},
+        "trackers": [{"tracker_id": "greedy_iou"}],
+    })
+    assert r.status_code == 400
+    assert "fps must be between 1 and 60" in r.json()["detail"]
+
+
+def test_workload_validation_rejects_computed_frames_exceeding_limit(client):
+    # duration 50s * fps 30 = 1500 frames (> 600)
+    r = client.post("/api/simulations", json={
+        "scenario": {"seed": 1, "duration_seconds": 50, "fps": 30},
+        "trackers": [{"tracker_id": "greedy_iou"}],
+    })
+    assert r.status_code == 400
+    assert "computed frames" in r.json()["detail"] or "frames must be between" in r.json()["detail"]
+
+
+def test_workload_validation_rejects_excessive_dimensions(client):
+    r = client.post("/api/simulations", json={
+        "scenario": {"seed": 1, "width": 4000, "height": 4000},
+        "trackers": [{"tracker_id": "greedy_iou"}],
+    })
+    assert r.status_code == 400
+    assert "width must be between 64 and 1920" in r.json()["detail"]
+
+
+def test_workload_validation_on_scenario_preview(client):
+    r = client.post("/api/scenarios/preview", json={
+        "duration_seconds": 100,
+        "fps": 30,
+    })
+    assert r.status_code == 400
+

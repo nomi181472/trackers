@@ -3,6 +3,9 @@
 ## Project Purpose & Scope
 This project is an **interactive failure and stress-testing simulator for Multi-Object Tracking (MOT) and Single-Object Tracking algorithms**.
 
+> [!IMPORTANT]
+> **Local-Only Execution**: This project is built strictly as a locally runnable research, development, and diagnostic tool. It is **not** intended, designed, or licensed for hosted SaaS deployment, multi-tenant cloud services, or commercial product offerings.
+
 ### Key Architecture Principles
 1. **Simulation-Only Focus**:
    - There are **no deep learning object detection models** (e.g. weights like `.pt` files) or real-world video upload pipelines.
@@ -20,11 +23,12 @@ This project is an **interactive failure and stress-testing simulator for Multi-
 
 4. **API Surface**:
    - `GET /api/health`: Health status.
-   - `GET /api/trackers`: Catalog of available trackers and hyperparameter schemas.
+   - `GET /api/trackers`: Catalog of available trackers, scenario detector parameters, and default configurations.
    - `GET /api/defaults`: Default detector & scenario noise parameters.
    - `POST /api/scenarios/preview`: Render and stream preview of synthetic scene with ground-truth overlays.
    - `POST /api/simulations`: Start asynchronous multi-tracker evaluation job.
    - `GET /api/jobs/{id}`: Poll status, events, natural-language failure diagnostics, and metrics.
-   - `GET /api/media/{file}`: Retrieve rendered video clips and failure thumbnails.
-   - `POST/DELETE /api/clear` (or `/api/cleanup`): Clear and delete generated records (`backend/data/jobs/**/*.mp4`, `backend/data/jobs/**/*.jpg`, `backend/data/scenarios/*.mp4`).
-   - Real video endpoints (`/api/real/upload`, `/api/real/jobs`) and detector model weights are intentionally omitted.
+   - `GET /api/media/{file}`: Retrieve rendered video clips (WebM/MP4) and failure thumbnails.
+   - `GET /api/logs/files`: List available server log files.
+   - `GET /api/logs`: Paginated log reader with cursor-based pagination.
+   - `POST/DELETE /api/clear` (or `/api/cleanup`): Purge generated artifacts (`backend/data/jobs/**/*.mp4`, `backend/data/jobs/**/*.jpg`, `backend/data/scenarios/*.mp4`); protected with `X-Admin-Key` header when `SIM_ADMIN_KEY` is set.

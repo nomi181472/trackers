@@ -66,7 +66,10 @@ class Scenario:
         self.object_type = obj_type
 
         self.rng = np.random.default_rng(self.seed)
-        self.n_frames = max(2, int(self.duration * self.fps))
+        if "frames" in params and params["frames"] is not None:
+            self.n_frames = max(2, int(params["frames"]))
+        else:
+            self.n_frames = max(2, int(self.duration * self.fps))
         self.radius = self.height // 24
 
         self.frames = None       # np.uint8 (T,H,W,3) BGR
