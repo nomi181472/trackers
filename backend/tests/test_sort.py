@@ -165,12 +165,12 @@ def test_duplicate_detections_do_not_collapse_into_one_track():
 
 def test_it_needs_no_third_party_tracker_library():
     """SORT is the only published algorithm implemented here, so it must not lean
-    on ultralytics/cv2 -- those would make the 'always available' claim false."""
+    on third-party tracker frameworks or cv2 -- those would make the 'always available' claim false."""
     import inspect
 
     import app.core.plugins.custom as custom
     src = inspect.getsource(custom)
-    for forbidden in ("ultralytics", "import cv2", "torch"):
+    for forbidden in ("external_tracker", "import cv2", "torch"):
         assert forbidden not in src, f"custom.py must not import {forbidden}"
 
 

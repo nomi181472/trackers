@@ -15,11 +15,11 @@ BOOL = "bool"
 SELECT = "select"
 
 MODEL_OPTIONS = {
-    "yolov8n": "yolov8n — smallest/fastest, weakest accuracy",
-    "yolov8s": "yolov8s — small, good balance",
-    "yolov8m": "yolov8m — medium",
-    "yolov8l": "yolov8l — large",
-    "yolov8x": "yolov8x — biggest/best, slowest",
+    "detector_nano": "detector_nano — smallest/fastest, weakest accuracy",
+    "detector_small": "detector_small — small, good balance",
+    "detector_medium": "detector_medium — medium",
+    "detector_large": "detector_large — large",
+    "detector_xlarge": "detector_xlarge — biggest/best, slowest",
 }
 GMC_OPTIONS = {
     "sparseOptFlow": "sparseOptFlow — sparse optical flow (well-rounded default)",

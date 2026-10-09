@@ -17,7 +17,7 @@ from app.core.plugins import REGISTRY
 # --------------------------------------------------------------------------- #
 
 DETECTOR_PARAMS = [
-    _d("model", "Detector model", SELECT, "yolov8n", "The object-detector that 'sees' boxes before the tracker links them.",
+    _d("model", "Detector model", SELECT, "detector_nano", "The object-detector that 'sees' boxes before the tracker links them.",
        "Small models miss small/fast objects more often.", options=MODEL_OPTIONS),
     _d("conf", "Detection confidence", FLOAT, 0.25, "Minimum confidence for a detection to count.",
        "Raise to remove junk, but you'll cut weak-but-real detections (occluded objects).", 0.01, 0.95, 0.01),

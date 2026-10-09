@@ -248,7 +248,7 @@ def _eval_multi(scenario, tracker_id, track_frames, dets_frames):
                     gt_ids=[gid],
                     text=(f"Detector produced no box near visible object {gid}. The tracker could not work "
                           "with data that never existed."),
-                    fix="Lower conf, use a bigger model (yolov8m/x), or disable randomness in the detection panel."))
+                    fix="Lower conf, use a higher capacity detector model, or disable randomness in the detection panel."))
 
         # MOT accumulation — the single source of truth for FP/FN.  The event
         # loops above only *describe* losses and ghosts; counting them there as

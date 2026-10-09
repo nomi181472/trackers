@@ -32,7 +32,7 @@ class Detection:
     """Canonical Detection Data Transfer Object (DTO).
     
     Standard generic interface: [x1, y1, x2, y2, score, class_id] with optional visual features.
-    Decouples trackers from specific detector representations (YOLO, SimDetector, etc.).
+    Decouples trackers from specific detector representations (CNN/ViT detectors, SimDetector, etc.).
     """
     box: list[float]  # [x1, y1, x2, y2]
     score: float = 1.0
