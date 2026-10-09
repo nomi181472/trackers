@@ -92,6 +92,18 @@ def test_single_object_metrics_reach_the_result(scene):
     assert r["metrics"]["longest_correct_run"] <= r["metrics"]["total_visible"]
 
 
+def test_single_object_seeds_with_ground_truth_box(scene):
+    from app.core.plugins import REGISTRY
+    if not REGISTRY.get("mil").is_available():
+        pytest.skip("no OpenCV single-object tracker in this build")
+    res = _run(scene, ["mil"])
+    (r,) = res["results"]
+    if "error" in r:
+        pytest.skip("mil unavailable at runtime")
+    assert r["metrics"]["correct_frames"] > 0
+    assert r["metrics"]["accuracy"] > 0.0
+
+
 def test_single_object_run_is_never_scored_past_the_clip(scene):
     """`longest_correct_run` cannot exceed the frames we could actually judge."""
     from app.core.plugins import REGISTRY

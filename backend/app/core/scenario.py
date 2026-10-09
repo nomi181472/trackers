@@ -206,8 +206,8 @@ class Scenario:
                                (int(hw * 0.95), max(4, int(hh * 0.22))),
                                0, 0, 360, (196, 199, 205), -1)
                 else:
-                    cv.ellipse(frame, (int(cx), int(cy + hh * 0.85)),
-                               (int(hw * 0.95), int(hh * 0.35)),
+                    cv.ellipse(frame, (int(cx), int(cy + hh * 0.96)),
+                               (int(hw * 0.95), max(2, int(hh * 0.18))),
                                0, 0, 360, (196, 199, 205), -1)
 
             # Pass 2: Objects
@@ -381,7 +381,9 @@ def _cv():
 
 def _draw_ball(cv, frame, cx, cy, rr, col):
     cv.circle(frame, (int(cx), int(cy)), rr, col, -1, cv.LINE_AA)
-    cv.circle(frame, (int(cx - rr * 0.3), int(cy - rr * 0.3)), max(3, rr // 4),
+    dark = (max(0, col[0] - 45), max(0, col[1] - 45), max(0, col[2] - 45))
+    cv.ellipse(frame, (int(cx), int(cy)), (max(2, int(rr * 0.6)), rr), 25, 0, 360, dark, max(1, rr // 10), cv.LINE_AA)
+    cv.circle(frame, (int(cx - rr * 0.3), int(cy - rr * 0.3)), max(2, rr // 4),
               (min(255, col[0] + 70), min(255, col[1] + 70), min(255, col[2] + 70)), -1, cv.LINE_AA)
 
 

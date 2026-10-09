@@ -473,7 +473,9 @@ def _eval_single(scenario, tracker_id, track_frames, dets_frames):
                                         gt_ids=[target],
                                         text=("Follower no longer reports a box overlapping the real object. "
                                               "It either drifted onto the background or its confidence collapsed."),
-                                        fix="Try CSRT (colour memory) or an appearance-based MOT tracker."))
+                                        fix=("Increase search_win_size for fast motion, or try CSRT (colour memory) / an appearance-based MOT tracker."
+                                             if tracker_id == "mil"
+                                             else "Try CSRT (colour memory) or an appearance-based MOT tracker.")))
         elif tr:
             events.append(Event(frame=t, type="follow_lost", severity="warning", blame="tracker",
                                 gt_ids=[target],

@@ -14,6 +14,7 @@ from app.core.explainer import explain
 from app.core.metrics import evaluate
 from app.core.plugins import build_engine
 from app.core.registry import DETECTION_DEFAULTS, get_tracker
+from app.core.trackers import Track, TrackerState
 
 
 class SimDetector:
@@ -272,13 +273,21 @@ def run_simulation(scenario, specs: list[dict], detection_params: dict,
                 img = scenario.frames[t]
                 import time
                 if meta["mode"] == "single":
-                    if t == seed_frame:
+                    if t < seed_frame:
+                        t0 = time.perf_counter()
+                        state = TrackerState(active=[])
+                        latencies_ms.append(round((time.perf_counter() - t0) * 1000.0, 2))
+                    elif t == seed_frame:
                         target = next(e for e in scenario.gt[t]
                                       if e["id"] == scenario.target_id())
+                        t0 = time.perf_counter()
                         engine.init(img, target["box"])
-                    t0 = time.perf_counter()
-                    state = engine.update(np.zeros((0, 5)), img)
-                    latencies_ms.append(round((time.perf_counter() - t0) * 1000.0, 2))
+                        latencies_ms.append(round((time.perf_counter() - t0) * 1000.0, 2))
+                        state = TrackerState(active=[Track(getattr(engine, "_id", 0), list(target["box"]), score=1.0)])
+                    else:
+                        t0 = time.perf_counter()
+                        state = engine.update(np.zeros((0, 5)), img)
+                        latencies_ms.append(round((time.perf_counter() - t0) * 1000.0, 2))
                 else:
                     t0 = time.perf_counter()
                     state = engine.update(dets_frames[t], img)

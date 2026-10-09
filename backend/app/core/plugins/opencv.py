@@ -44,6 +44,14 @@ class OpenCVSingleTracker(Engine):
                 self._tracker = cv2.TrackerCSRT_create(csrt_params)
             except Exception:
                 self._tracker = factory()
+        elif self.tracker_id == "mil" and hasattr(cv2, "TrackerMIL_Params"):
+            try:
+                mil_params = cv2.TrackerMIL_Params()
+                search_win = float(self.params.get("search_win_size", 40.0))
+                mil_params.samplerSearchWinSize = search_win
+                self._tracker = cv2.TrackerMIL_create(mil_params)
+            except Exception:
+                self._tracker = factory()
         else:
             self._tracker = factory()
         x1, y1, x2, y2 = box
@@ -222,6 +230,7 @@ class MilPlugin(_OpenCvSinglePlugin):
             "strengths": ["Robust to jitter / noisy init boxes", "No single-pixel drift snowball"],
             "failure_modes": ["Slower than pure filters", "Still a patch-matcher → true occlusion and scale change beat it"],
             "params": [
+                _d("search_win_size", "Search window size", FLOAT, 40.0, "Radius of candidate search area around the target.", "Increase for fast-moving targets, decrease for crowded scenes.", 15.0, 100.0, 5.0, "px"),
                 _d("max_age", "Lost-track memory", INT, 30, "Frames it keeps searching after loss.", "", 1, 120, 1, "frames"),
             ],
         }
