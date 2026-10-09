@@ -488,29 +488,35 @@ class TrackTrack(BYTETracker):
         TrackTrackSTrack.multi_predict(strack_pool)
         TrackTrackSTrack.multi_predict(unconfirmed_tracked)
 
-        base_thresh = self.lost_match_thr if (self.lost_match_thr > 0 and len(self.lost_stracks) > 0) else self.match_thresh
-        matches, u_track, u_detection = self._iterative_assignment(
-            strack_pool, detections,
-            base_thresh=base_thresh,
+        # Step 1: Match confirmed tracks with high-confidence detections
+        matches_conf, u_conf_track, u_detection = self._iterative_assignment(
+            confirmed_tracked, detections,
+            base_thresh=self.match_thresh,
             reduce_step=self.reduce_step
         )
-
-        for itracked, idet in matches:
-            track = strack_pool[itracked]
+        for itracked, idet in matches_conf:
+            track = confirmed_tracked[itracked]
             det = detections[idet]
-            if track.state == TrackState.Tracked:
-                track.update(det, self.frame_id)
-                activated_stracks.append(track)
-            else:
-                track.re_activate(det, self.frame_id, new_id=False)
-                refind_stracks.append(track)
+            track.update(det, self.frame_id)
+            activated_stracks.append(track)
 
-        # Step 2: Second-chance matching for low-confidence detections with penalty_p
-        detections_second = [
-            TrackTrackSTrack(box, score, c, f)
-            for (box, score, c, f) in zip(_to_xywh_with_idx(dets_second, idx_second), scores_second, cls_second, feats_second)
-        ]
-        r_tracked_stracks = [strack_pool[i] for i in u_track if strack_pool[i].state == TrackState.Tracked]
+        # Step 1b: Match lost tracks with remaining high-confidence detections using lost_match_thr if set
+        lost_thresh = self.lost_match_thr if self.lost_match_thr > 0 else self.match_thresh
+        rem_dets_step1 = [detections[i] for i in u_detection]
+        matches_lost, u_lost_track, u_rem_detection = self._iterative_assignment(
+            self.lost_stracks, rem_dets_step1,
+            base_thresh=lost_thresh,
+            reduce_step=self.reduce_step,
+            is_lost=True
+        )
+        for itracked, idet in matches_lost:
+            track = self.lost_stracks[itracked]
+            det = rem_dets_step1[idet]
+            track.re_activate(det, self.frame_id, new_id=False)
+            refind_stracks.append(track)
+
+        u_detection = [u_detection[i] for i in u_rem_detection]
+        r_tracked_stracks = [confirmed_tracked[i] for i in u_conf_track]
         matches, u_track_second, _ = self._iterative_assignment(
             r_tracked_stracks, detections_second,
             base_thresh=0.5,

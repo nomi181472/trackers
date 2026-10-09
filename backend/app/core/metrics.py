@@ -136,9 +136,9 @@ def _eval_multi(scenario, tracker_id, track_frames, dets_frames):
             gt_life[e["id"]] = gt_life.get(e["id"], 0) + 1
         gt_total += len(visible)
 
+        sorted_tids = sorted(tid_set)
         # Update py-motmetrics accumulator with IoU distance matrix
         if acc is not None:
-            sorted_tids = sorted(tid_set)
             if visible and sorted_tids:
                 dists = np.full((len(gt_ids), len(sorted_tids)), np.nan)
                 for gi, e in enumerate(visible):
@@ -154,12 +154,12 @@ def _eval_multi(scenario, tracker_id, track_frames, dets_frames):
             else:
                 acc.update([], [], np.empty((0, 0)))
 
-        pairs = _assign([track_map[i].box for i in tid_set],
+        pairs = _assign([track_map[i].box for i in sorted_tids],
                         [e["box"] for e in visible]) if visible else []
         pair_by_gt = {}
         pair_by_tr = {}
         for ti, gi, v in pairs:
-            tid = sorted(tid_set)[ti]
+            tid = sorted_tids[ti]
             gid = gt_ids[gi]
             pair_by_gt[gid] = (tid, v)
             pair_by_tr[tid] = (gid, v)
