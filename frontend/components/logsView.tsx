@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import type { LogFileInfo, LogPage } from "@/lib/types";
 import { getLogFiles, getLogLines } from "@/lib/api";
 
-export function LogsView() {
+export function LogsView({ active = false }: { active?: boolean }) {
   const [selectedWorker, setSelectedWorker] = useState<string>("worker-n");
   const [files, setFiles] = useState<LogFileInfo[]>([]);
   const [selectedFile, setSelectedFile] = useState<string>("");
@@ -14,15 +14,16 @@ export function LogsView() {
   const [loading, setLoading] = useState<boolean>(false);
   const [loadingMore, setLoadingMore] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const [autoRefresh, setAutoRefresh] = useState<boolean>(true);
+  const [autoRefresh, setAutoRefresh] = useState<boolean>(false);
   const [filterQuery, setFilterQuery] = useState<string>("");
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const bottomAnchorRef = useRef<HTMLDivElement>(null);
   const prevScrollHeightRef = useRef<number>(0);
 
-  // Load available files on mount or worker change
+  // Load available files only when active or worker changes
   const fetchFiles = useCallback(async () => {
+    if (!active) return;
     try {
       setError(null);
       const res = await getLogFiles(selectedWorker);
@@ -39,15 +40,15 @@ export function LogsView() {
       setSelectedFile("");
       setLines([]);
     }
-  }, [selectedWorker]);
+  }, [active, selectedWorker]);
 
   useEffect(() => {
     fetchFiles();
   }, [fetchFiles]);
 
-  // Load latest chunk when selected file changes
+  // Load latest chunk when selected file changes, but only if tab is active
   const loadLatestLogs = useCallback(async (filename: string) => {
-    if (!filename) return;
+    if (!active || !filename) return;
     setLoading(true);
     setError(null);
     try {
@@ -60,17 +61,17 @@ export function LogsView() {
     } finally {
       setLoading(false);
     }
-  }, [selectedWorker]);
+  }, [active, selectedWorker]);
 
   useEffect(() => {
-    if (selectedFile) {
+    if (active && selectedFile) {
       loadLatestLogs(selectedFile);
     }
-  }, [selectedFile, loadLatestLogs]);
+  }, [active, selectedFile, loadLatestLogs]);
 
-  // Periodic polling for new lines if viewing the latest file and autoRefresh is true
+  // Periodic polling only if active and autoRefresh is explicitly enabled
   useEffect(() => {
-    if (!autoRefresh || !selectedFile) return;
+    if (!active || !autoRefresh || !selectedFile) return;
     const interval = setInterval(async () => {
       try {
         const data: LogPage = await getLogLines({ file: selectedFile, limit: 100, worker: selectedWorker });
@@ -87,7 +88,7 @@ export function LogsView() {
       }
     }, 4000);
     return () => clearInterval(interval);
-  }, [autoRefresh, selectedFile, selectedWorker]);
+  }, [active, autoRefresh, selectedFile, selectedWorker]);
 
   // Load older lines when user scrolls to top/bottom
   const loadOlderLogs = async () => {

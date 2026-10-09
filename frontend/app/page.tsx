@@ -305,7 +305,7 @@ export default function Home() {
       {/* LogsView — always mounted, hidden when not active.
           Keeps scroll position and loaded log lines intact. */}
       <div style={{ display: mode === "logs" ? "block" : "none" }}>
-        <LogsView />
+        <LogsView active={mode === "logs"} />
       </div>
 
       {/* SimulatorWorkspace — always mounted so running job state (job ID,
