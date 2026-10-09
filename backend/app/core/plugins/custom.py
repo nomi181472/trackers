@@ -261,11 +261,20 @@ class SortTracker(CustomTrackerBase):
                 matched_det.add(int(j))
 
         for tid, t in self.tracks.items():
-            if tid not in matched_track and t["kind"] == "active":
-                # a confirmed track that missed goes 'lost'; the Kalman keeps
-                # predicting so it can be re-found without spending a new id
-                t["kind"] = "lost"
-                self._just_lost.add(tid)
+            if tid not in matched_track:
+                if t["kind"] == "active":
+                    # a confirmed track that missed goes 'lost'; the Kalman keeps
+                    # predicting so it can be re-found without spending a new id
+                    t["kind"] = "lost"
+                    self._just_lost.add(tid)
+                elif t["kind"] == "tentative":
+                    t["kind"] = "removed"
+
+        # Immediately purge any unconfirmed tracks that missed
+        unmatched_tentative = [k for k, v in self.tracks.items() if v["kind"] == "removed"]
+        for tid in unmatched_tentative:
+            self._kalman.pop(tid, None)
+        self.tracks = {k: v for k, v in self.tracks.items() if v["kind"] != "removed"}
 
         for j, row in enumerate(rows):
             if j not in matched_det:

@@ -290,3 +290,29 @@ def test_tracktrack_lost_match_thr_only_affects_lost():
     assert tr.state == TrackState.Lost
 
 
+def test_tentative_tracks_purged_immediately_on_miss():
+    from app.core.plugins.custom import SortTracker
+    from app.core.plugins.vector_embed import VectorEmbedderEngine
+
+    # 1. SortTracker with min_hits=3
+    sort = SortTracker({"min_hits": 3, "max_age": 30, "iou_thresh": 0.3})
+    # Frame 1: Detection creates a tentative track (id 0)
+    sort.update(np.array([[10, 10, 50, 50, 0.9, 0]]))
+    assert len(sort.tracks) == 1
+    assert sort.tracks[0]["kind"] == "tentative"
+    # Frame 2: Missing detection should purge tentative track immediately without waiting max_age
+    st2 = sort.update(np.empty((0, 5)))
+    assert len(sort.tracks) == 0
+    assert 0 not in sort._kalman
+
+    # 2. VectorEmbedderEngine with min_hits=3
+    embed_eng = VectorEmbedderEngine({"min_hits": 3, "max_age": 30, "iou_thresh": 0.3})
+    embed_eng.update(np.array([[10, 10, 50, 50, 0.9, 0]]))
+    assert len(embed_eng.tracks) == 1
+    assert embed_eng.tracks[0]["kind"] == "tentative"
+    # Missing frame purges tentative track
+    embed_eng.update(np.empty((0, 5)))
+    assert len(embed_eng.tracks) == 0
+
+
+
