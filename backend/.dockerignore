@@ -1,10 +1,63 @@
+# Git & SCM
+.git
+.gitignore
+.gitattributes
+
+# Virtual environments
 .venv
 venv
-__pycache__
-*.pyc
+env
+ENV/
+*.venv
+
+# Python artifacts & caches
+__pycache__/
+*.py[cod]
+*$py.class
 *.pyo
 *.pyd
-.pytest_cache
-data
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Tests & diagnostic suites (unneeded in prod runtime)
+tests/
+
+# Data, media & logs generated during simulation
+data/
+*.log
+*.mp4
+*.webm
+*.avi
+*.mkv
+*.mov
+*.jpg
+*.jpeg
+*.png
+*.gif
+
+# ML/DL weights & model files
 *.pt
-.git
+*.pth
+*.onnx
+*.bin
+*.weights
+*.engine
+*.tflite
+
+# Development tools & IDE
+.idea/
+.vscode/
+.kilo/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Misc
+*.md
+!README.md
+hf
+hf.pub

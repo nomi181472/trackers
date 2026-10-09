@@ -1,0 +1,66 @@
+# Git & SCM
+.git
+.gitignore
+.gitattributes
+
+# Virtual environments
+.venv
+venv
+env
+ENV/
+
+# Node & frontend build outputs
+node_modules
+frontend/node_modules
+.next
+frontend/.next
+
+# Python caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local data, videos, jobs & logs
+backend/data/
+data/
+*.mp4
+*.webm
+*.avi
+*.mkv
+*.mov
+*.jpg
+*.jpeg
+*.png
+*.gif
+demos/
+demo/
+assets/
+demos.gif
+*.log
+
+# Model weights & engines
+*.pt
+*.pth
+*.onnx
+*.engine
+*.weights
+*.tflite
+*.bin
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# IDE & tooling
+.vscode/
+.idea/
+.kilo/
+*.swp
+*.swo
+.DS_Store
+*.tsbuildinfo
