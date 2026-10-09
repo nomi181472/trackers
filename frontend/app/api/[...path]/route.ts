@@ -18,6 +18,9 @@ function sanitizeHeaders(headers: Headers): Headers {
   clean.delete("x-vercel-id");
   clean.delete("x-vercel-cache");
   clean.delete("x-nf-request-id");
+  clean.delete("content-encoding");
+  clean.delete("content-length");
+  clean.delete("transfer-encoding");
   return clean;
 }
 
