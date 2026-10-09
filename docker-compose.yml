@@ -25,6 +25,7 @@ services:
       - "3000:3000"
     environment:
       - WORKER_N_URL=${WORKER_N_URL:-http://backend:8000}
+      - WORKER_V_URL=${WORKER_V_URL:-http://backend:8000}
       - BACKEND_URL=${BACKEND_URL:-http://backend:8000}
       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-}
       - DISABLE_RATE_LIMIT=${DISABLE_RATE_LIMIT:-true}

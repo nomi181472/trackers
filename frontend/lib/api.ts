@@ -9,7 +9,11 @@ import type { Catalog, JobStatus, ParamValues, ScenarioMeta, SimulationResult } 
  */
 export function getApiBase(): string {
   if (typeof window === "undefined") {
-    const serverUrl = process.env.WORKER_N_URL || process.env.BACKEND_URL;
+    const serverUrl =
+      (process.env.DEFAULT_WORKER === "worker-v" ? process.env.WORKER_V_URL : null) ||
+      process.env.WORKER_N_URL ||
+      process.env.WORKER_V_URL ||
+      process.env.BACKEND_URL;
     if (serverUrl) {
       return serverUrl.replace(/\/$/, "");
     }

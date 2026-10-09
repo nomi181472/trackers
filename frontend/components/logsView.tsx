@@ -173,7 +173,8 @@ export function LogsView({ active = false }: { active?: boolean }) {
               }}
               title="Select which worker node to inspect logs from"
             >
-              <option value="worker-n">⚡ worker-n (Active)</option>
+              <option value="worker-n">⚡ worker-n</option>
+              <option value="worker-v">▲ worker-v (Vercel)</option>
             </select>
           </div>
 

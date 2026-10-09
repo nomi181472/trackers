@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   WORKER_N,
   checkRateLimit,
+  resolveWorkerFromTarget,
+  decodeJobId,
+  encodeJobId,
+  getNextAvailableWorker,
 } from "@/lib/workers";
 
 export const dynamic = "force-dynamic";
@@ -43,18 +47,38 @@ async function handleProxy(req: NextRequest, params: { path: string[] }) {
     );
   }
 
-  // 2. Clean jobId if prefixed
+  // 2. Resolve target worker (job affinity, explicit worker param, or default)
+  let targetWorker = WORKER_N;
+  const targetParam = searchParams.get("worker") || req.headers.get("x-target-worker");
+
+  // A. Explicit worker request
+  if (targetParam) {
+    targetWorker = resolveWorkerFromTarget(targetParam);
+  }
+
+  // B. Job Affinity: /jobs/{jobId}
   if (pathSegments[0] === "jobs" && pathSegments[1]) {
-    const rawJobId = pathSegments[1].replace(/^(wn_|wr_|wv_)/, "");
+    const { worker, rawJobId } = decodeJobId(pathSegments[1]);
+    targetWorker = worker;
     const rest = pathSegments.slice(2).join("/");
     rewrittenPath = rest ? `/jobs/${rawJobId}/${rest}` : `/jobs/${rawJobId}`;
   }
 
-  // 3. Construct target URL to worker-n directly
+  // C. Media Affinity: /media/{filename}
+  if (pathSegments[0] === "media" && pathSegments[1]) {
+    targetWorker = resolveWorkerFromTarget(pathSegments[1]);
+  }
+
+  // D. General dispatch (new simulation or preview)
+  if (!targetParam && pathSegments[0] !== "jobs" && pathSegments[0] !== "media") {
+    targetWorker = await getNextAvailableWorker();
+  }
+
+  // 3. Construct target URL to chosen worker
   const forwardParams = new URLSearchParams(searchParams);
   forwardParams.delete("worker");
   const queryString = forwardParams.toString() ? `?${forwardParams.toString()}` : "";
-  const targetUrl = `${WORKER_N.baseUrl}/api${rewrittenPath}${queryString}`;
+  const targetUrl = `${targetWorker.baseUrl}/api${rewrittenPath}${queryString}`;
 
   // Forward request headers
   const forwardHeaders = new Headers(req.headers);
@@ -74,17 +98,22 @@ async function handleProxy(req: NextRequest, params: { path: string[] }) {
 
     const contentType = upstreamRes.headers.get("content-type") || "";
     const responseHeaders = sanitizeHeaders(upstreamRes.headers);
-    responseHeaders.set("X-Worker", "worker-n");
+    responseHeaders.set("X-Worker", targetWorker.name);
 
     // If response is JSON
     if (contentType.includes("application/json")) {
       const data = await upstreamRes.json();
       if (data && typeof data === "object") {
         if ("job_id" in data && typeof data.job_id === "string") {
-          // Strip any prefix, keep raw job_id
-          data.job_id = data.job_id.replace(/^(wn_|wr_|wv_)/, "");
+          // If using worker-v, prefix with wv_ so job polling routes back to worker-v
+          if (targetWorker.id === "worker-v") {
+            data.job_id = encodeJobId("worker-v", data.job_id);
+          } else {
+            // Strip any prefix for default worker-n
+            data.job_id = data.job_id.replace(/^(wn_|wr_|wv_)/, "");
+          }
         }
-        data.worker = "worker-n";
+        data.worker = targetWorker.name;
       }
 
       return NextResponse.json(data, {
@@ -103,8 +132,8 @@ async function handleProxy(req: NextRequest, params: { path: string[] }) {
     const errMsg = err instanceof Error ? err.message : String(err);
     return NextResponse.json(
       {
-        detail: `Worker worker-n connection error: ${errMsg}`,
-        worker: "worker-n",
+        detail: `Worker ${targetWorker.name} connection error: ${errMsg}`,
+        worker: targetWorker.name,
       },
       { status: 502 }
     );

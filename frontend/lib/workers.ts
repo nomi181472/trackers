@@ -1,39 +1,66 @@
-// Dedicated single-worker proxy configuration (worker-n only).
+// Multi-worker configuration supporting worker-n and worker-v.
 
-export type WorkerId = "worker-n";
+export type WorkerId = "worker-n" | "worker-v";
 
 export interface WorkerConfig {
   id: WorkerId;
   name: string;
   baseUrl: string;
+  prefix: string;
   timeoutMs: number;
 }
 
-// Configured to worker-n (from env or local backend fallback)
 const LOCAL_URL = "http://127.0.0.1:8000";
-const rawWorkerUrl = (
+
+// WORKER_N: Northflank worker or fallback
+const rawWorkerN = (
   process.env.WORKER_N_URL?.trim() ||
   process.env.BACKEND_URL?.trim() ||
   LOCAL_URL
 ).replace(/\/$/, "");
 
 const NORTHFLANK_URL =
-  rawWorkerUrl.startsWith("http://") || rawWorkerUrl.startsWith("https://")
-    ? rawWorkerUrl
-    : `https://${rawWorkerUrl}`;
+  rawWorkerN.startsWith("http://") || rawWorkerN.startsWith("https://")
+    ? rawWorkerN
+    : `https://${rawWorkerN}`;
 
 export const WORKER_N: WorkerConfig = {
   id: "worker-n",
   name: "worker-n",
   baseUrl: NORTHFLANK_URL,
+  prefix: "wn_",
   timeoutMs: 45000,
+};
+
+// WORKER_V: Vercel / serverless worker or fallback
+const rawWorkerV = (
+  process.env.WORKER_V_URL?.trim() ||
+  process.env.BACKEND_URL?.trim() ||
+  LOCAL_URL
+).replace(/\/$/, "");
+
+const VERCEL_WORKER_URL =
+  rawWorkerV.startsWith("http://") || rawWorkerV.startsWith("https://")
+    ? rawWorkerV
+    : `https://${rawWorkerV}`;
+
+export const WORKER_V: WorkerConfig = {
+  id: "worker-v",
+  name: "worker-v",
+  baseUrl: VERCEL_WORKER_URL,
+  prefix: "wv_",
+  timeoutMs: 30000,
 };
 
 export const WORKERS: Record<WorkerId, WorkerConfig> = {
   "worker-n": WORKER_N,
+  "worker-v": WORKER_V,
 };
 
-export const WORKER_LIST: WorkerId[] = ["worker-n"];
+// If WORKER_V_URL is specifically configured, include both; default active is selectable
+export const WORKER_LIST: WorkerId[] = process.env.WORKER_V_URL?.trim()
+  ? ["worker-n", "worker-v"]
+  : ["worker-n"];
 
 // Sliding window rate limiter state: max 3 requests per second
 interface RateLimiterState {
@@ -72,32 +99,50 @@ export function checkRateLimit(): { allowed: boolean; message?: string } {
 }
 
 /**
- * Returns worker-n directly.
+ * Returns default or specified worker.
  */
-export async function getNextAvailableWorker(): Promise<WorkerConfig> {
+export async function getNextAvailableWorker(preferredId?: WorkerId | null): Promise<WorkerConfig> {
+  if (preferredId && WORKERS[preferredId]) {
+    return WORKERS[preferredId];
+  }
+  // Default to worker-v if explicitly configured and requested, otherwise worker-n
+  if (process.env.DEFAULT_WORKER === "worker-v") {
+    return WORKER_V;
+  }
   return WORKER_N;
 }
 
 /**
- * Resolves worker-n.
+ * Resolves worker from target string or prefix (e.g., 'worker-v', 'wv_', 'worker-n', 'wn_').
  */
-export function resolveWorkerFromTarget(_target: string | null): WorkerConfig {
+export function resolveWorkerFromTarget(target: string | null): WorkerConfig {
+  if (!target) return WORKER_N;
+  const lower = target.toLowerCase();
+  if (lower === "worker-v" || lower.startsWith("wv_")) {
+    return WORKER_V;
+  }
   return WORKER_N;
 }
 
 /**
- * No prefix encoding needed — passes clean original jobId to Northflank.
+ * Encodes original backend jobId with worker prefix if multiple workers in use.
  */
-export function encodeJobId(_workerId: WorkerId, originalJobId: string): string {
-  // If it already had wn_, strip it cleanly
-  return originalJobId.replace(/^wn_/, "");
+export function encodeJobId(workerId: WorkerId, originalJobId: string): string {
+  const clean = originalJobId.replace(/^(wn_|wr_|wv_)/, "");
+  return `${WORKERS[workerId].prefix}${clean}`;
 }
 
 /**
- * Decodes jobId by stripping any legacy prefix.
+ * Decodes jobId by detecting worker prefix.
  */
 export function decodeJobId(jobId: string): { worker: WorkerConfig; rawJobId: string } {
-  const cleanId = jobId.replace(/^wn_/, "").replace(/^wr_/, "").replace(/^wv_/, "");
+  if (jobId.startsWith("wv_")) {
+    return {
+      worker: WORKER_V,
+      rawJobId: jobId.replace(/^wv_/, ""),
+    };
+  }
+  const cleanId = jobId.replace(/^wn_/, "").replace(/^wr_/, "");
   return {
     worker: WORKER_N,
     rawJobId: cleanId,
