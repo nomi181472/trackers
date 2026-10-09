@@ -12,7 +12,7 @@
 **A visual & programmatic stress-testing simulator to uncover *why*, *when*, and *how* Computer Vision trackers fail.**  
 Stop debugging tracker regressions in production. Benchmark **18 tracking algorithms** under mathematically controlled perturbations (severe occlusions, path crossing, camera jitter, motion blur, and visual look-alikes).
 
-[Why This Matters for Your Apps](#-why-this-helps-in-your-industry-applications) • [Interactive Showcase](#-multi-object-tracking-in-action) • [Benchmark Trade-Offs](#-deep-dive-benchmarks--trade-off-analysis) • [Supported Trackers (18)](#-tracker-catalog--algorithm-architectures-18) • [Adding Custom Trackers](#-adding-a-custom-tracker-integration) • [Contributing](#-contributing) • [API Guide](#-rest-api-reference) • [References & Citations](#-references--citations)
+[Why This Matters for Your Apps](#-why-this-helps-in-your-industry-applications) • [Interactive Showcase](#-multi-object-tracking-in-action) • [How to Run Locally](#-how-to-run-locally) • [Benchmark Trade-Offs](#-deep-dive-benchmarks--trade-off-analysis) • [Supported Trackers (18)](#-tracker-catalog--algorithm-architectures-18) • [Adding Custom Trackers](#-adding-a-custom-tracker-integration) • [Contributing](#-contributing) • [API Guide](#-rest-api-reference) • [References & Citations](#-references--citations)
 
 </div>
 
@@ -179,39 +179,196 @@ $$\text{IDF1} = \frac{2 \cdot \text{IDTP}}{2 \cdot \text{IDTP} + \text{IDFP} + \
 
 ---
 
-## 🛠️ Quick Start & Local Execution
+## 🛠️ How to Run Locally
 
-### Prerequisites
-* Python 3.12+
-* Node.js 18+
-* `ffmpeg` (installed on system path)
+Follow these instructions to clone, configure, and launch the Tracker Failure Simulator on any operating system (**Linux**, **macOS**, **Windows PowerShell**, **Windows CMD**, or **Docker**).
 
-### One-Command Runner
-Start both the FastAPI backend (`http://localhost:8000`) and Next.js frontend (`http://localhost:3000`) concurrently:
+### 📋 Prerequisites
+
+| Tool | Version | Description |
+| :--- | :--- | :--- |
+| **Git** | `2.x+` | Source control (to clone the repository) |
+| **Python** | `3.10` – `3.12` | Required for the FastAPI backend engine |
+| **Node.js** | `18.x+` (with `npm 9+`) | Required for the Next.js frontend |
+| **FFmpeg** | Any recent release | Required for synthetic video encoding (`ffmpeg` in system PATH) |
+| *(Optional)* **Docker** | `24+` with Compose | For zero-setup containerized execution |
+
+---
+
+### 1. Clone the Repository
 
 ```bash
-# Start simulator
-./run.sh
+git clone https://github.com/<your-username>/trackers.git
+cd trackers
+```
 
-# Stop and clean up ports
+---
+
+### 2. Option A: Docker Compose (All Operating Systems)
+
+If you have Docker installed, this is the quickest way to launch the entire stack without installing Python or Node.js locally:
+
+```bash
+# Build images and start backend (8000) and frontend (3000)
+docker compose up --build
+```
+> *(On older Docker versions: `docker-compose up --build`)*
+
+- **Web Dashboard**: [http://localhost:3000](http://localhost:3000)
+- **Backend API Docs**: [http://localhost:8000/docs](http://localhost:8000/docs)
+- **To stop**: Press `Ctrl + C` or run `docker compose down`.
+
+---
+
+### 3. Option B: Linux & macOS (Bash / Zsh)
+
+#### 🚀 One-Command Runner (Automated)
+```bash
+# Ensure scripts are executable
+chmod +x run.sh start.sh stop.sh
+
+# Start both backend and frontend servers
+./run.sh
+```
+
+To stop all simulator processes and release ports:
+```bash
 ./stop.sh
 ```
 
-### Manual Execution
+#### 🛠️ Manual Terminal Setup (Step-by-Step)
 
+**Terminal 1 — Backend (FastAPI):**
 ```bash
-# Terminal 1: Backend
 cd backend
+
+# 1. Create and activate virtual environment
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
-python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
-# Terminal 2: Frontend
-cd frontend
-npm install
-npm run dev -- -p 3000
+# 2. Install dependencies
+pip install --upgrade pip
+pip install -r requirements.txt
+
+# 3. Start uvicorn server
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
+
+**Terminal 2 — Frontend (Next.js):**
+```bash
+cd frontend
+
+# 1. Install dependencies
+npm install
+
+# 2. Point to local backend and launch
+export BACKEND_URL="http://127.0.0.1:8000"
+export WORKER_N_URL="http://127.0.0.1:8000"
+
+npm run dev
+```
+
+---
+
+### 4. Option C: Windows (PowerShell)
+
+Open **PowerShell** and navigate into the cloned directory:
+
+```powershell
+cd trackers
+```
+
+**Terminal 1 — Backend (FastAPI):**
+```powershell
+cd backend
+
+# 1. Create virtual environment
+python -m venv .venv
+
+# 2. Activate virtual environment
+# (If execution policy prevents script activation, run: Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass)
+.\.venv\Scripts\Activate.ps1
+
+# 3. Install dependencies
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+
+# 4. Start backend
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+```
+
+**Terminal 2 — Frontend (Next.js):**
+Open a second PowerShell window:
+
+```powershell
+cd trackers\frontend
+
+# 1. Install dependencies
+npm install
+
+# 2. Configure environment and launch
+$env:BACKEND_URL="http://127.0.0.1:8000"
+$env:WORKER_N_URL="http://127.0.0.1:8000"
+
+npm run dev
+```
+
+---
+
+### 5. Option D: Windows (Command Prompt — CMD)
+
+Open **cmd.exe** and navigate into the project directory:
+
+```cmd
+cd trackers
+```
+
+**Terminal 1 — Backend (FastAPI):**
+```cmd
+cd backend
+
+:: 1. Create virtual environment
+python -m venv .venv
+
+:: 2. Activate virtual environment
+call .venv\Scripts\activate.bat
+
+:: 3. Install dependencies
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+
+:: 4. Start backend
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+```
+
+**Terminal 2 — Frontend (Next.js):**
+Open a second CMD window:
+
+```cmd
+cd trackers\frontend
+
+:: 1. Install dependencies
+npm install
+
+:: 2. Configure environment and launch
+set BACKEND_URL=http://127.0.0.1:8000
+set WORKER_N_URL=http://127.0.0.1:8000
+
+npm run dev
+```
+
+---
+
+### 6. Verify Installation
+
+Once both servers are running:
+1. Open your browser and visit **[http://localhost:3000](http://localhost:3000)**.
+2. Check the API docs and health check:
+   - **Swagger UI**: [http://localhost:8000/docs](http://localhost:8000/docs)
+   - **Health Probe**: [http://localhost:8000/api/health](http://localhost:8000/api/health)
+3. In the UI, choose a scenario (e.g. *Cross Path* or *Occlusion Wall*), pick your trackers (`ByteTrack`, `BoT-SORT`, `OC-SORT`, etc.), and click **Run Simulation**.
+
+---
 
 ### ⚡ Local Worker Concurrency & Execution Bounds
 
@@ -224,14 +381,32 @@ Jobs execute using an internal, bounded `ThreadPoolExecutor` designed for reprod
 If your machine has a higher core count (e.g. 8 or 16 CPU cores) and you want to execute more concurrent tracker simulations locally, override `SIM_MAX_WORKERS` before starting the simulator:
 
 ```bash
-# With the one-command runner:
+# Linux/macOS One-Command:
 SIM_MAX_WORKERS=4 ./run.sh
 
-# Or when launching the backend manually:
+# Or manual backend startup (Linux/macOS):
 export SIM_MAX_WORKERS=4
 python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+# Windows PowerShell:
+$env:SIM_MAX_WORKERS="4"
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+
+# Windows CMD:
+set SIM_MAX_WORKERS=4
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
-You can also view your active worker pool count directly in the top header bar of the UI.
+
+---
+
+### 🧪 Running Unit & Integration Tests
+
+Ensure your virtual environment is active in `backend`, then run `pytest`:
+
+```bash
+cd backend
+pytest tests/
+```
 
 ---
 

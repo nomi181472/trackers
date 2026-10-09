@@ -31,3 +31,13 @@ services:
           type: web
           name: tracker-simulator-backend
           property: host
+      - key: WORKER_N_URL
+        fromService:
+          type: web
+          name: tracker-simulator-backend
+          property: host
+      - key: BACKEND_URL
+        fromService:
+          type: web
+          name: tracker-simulator-backend
+          property: host

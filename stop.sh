@@ -4,6 +4,7 @@ set -e
 # Tracker Failure Simulator shutdown script
 # Terminates all running backend and frontend processes and frees ports 8000 and 3000.
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKEND_PORT="${BACKEND_PORT:-8000}"
 FRONTEND_PORT="${FRONTEND_PORT:-3000}"
 
@@ -20,6 +21,35 @@ echo -e "${BOLD}${CYAN}      Tracker Failure Simulator Teardown        ${NC}"
 echo -e "${BOLD}${CYAN}================================================${NC}"
 
 stopped_any=false
+
+# 0. Check and stop Docker Compose containers if running
+stop_docker() {
+    if [ -f "$SCRIPT_DIR/docker-compose.yml" ]; then
+        if command -v docker &>/dev/null && docker compose version &>/dev/null; then
+            if docker compose -f "$SCRIPT_DIR/docker-compose.yml" ps --status running -q 2>/dev/null | grep -q .; then
+                stopped_any=true
+                echo -e "${YELLOW}[Docker] Stopping running docker compose services...${NC}"
+                docker compose -f "$SCRIPT_DIR/docker-compose.yml" down 2>/dev/null || true
+                echo -e "${GREEN}[Docker] Docker Compose services stopped.${NC}"
+            fi
+        elif command -v docker-compose &>/dev/null; then
+            if docker-compose -f "$SCRIPT_DIR/docker-compose.yml" ps -q 2>/dev/null | grep -q .; then
+                stopped_any=true
+                echo -e "${YELLOW}[Docker] Stopping running docker-compose services...${NC}"
+                docker-compose -f "$SCRIPT_DIR/docker-compose.yml" down 2>/dev/null || true
+                echo -e "${GREEN}[Docker] Docker Compose services stopped.${NC}"
+            fi
+        fi
+    fi
+}
+
+if [ "$1" = "docker" ] || [ "$1" = "compose" ]; then
+    stop_docker
+    echo -e "\n${BOLD}${GREEN}✔ Docker services have been stopped.${NC}\n"
+    exit 0
+fi
+
+stop_docker
 
 # Helper to find and kill processes on a specific TCP port
 stop_port() {

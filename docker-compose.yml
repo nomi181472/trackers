@@ -24,7 +24,9 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - WORKER_N_URL=${WORKER_N_URL:-http://backend:8000}
+      - BACKEND_URL=${BACKEND_URL:-http://backend:8000}
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-}
     depends_on:
       backend:
         condition: service_healthy

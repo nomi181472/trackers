@@ -9,10 +9,18 @@ export interface WorkerConfig {
   timeoutMs: number;
 }
 
-// Configured strictly to worker-n (Northflank)
-const NORTHFLANK_URL = (
-  process.env.WORKER_N_URL || "https://tracker--trackers--xcjpbwq4wgwn.code.run"
+// Configured to worker-n (from env or local backend fallback)
+const LOCAL_URL = "http://127.0.0.1:8000";
+const rawWorkerUrl = (
+  process.env.WORKER_N_URL?.trim() ||
+  process.env.BACKEND_URL?.trim() ||
+  LOCAL_URL
 ).replace(/\/$/, "");
+
+const NORTHFLANK_URL =
+  rawWorkerUrl.startsWith("http://") || rawWorkerUrl.startsWith("https://")
+    ? rawWorkerUrl
+    : `https://${rawWorkerUrl}`;
 
 export const WORKER_N: WorkerConfig = {
   id: "worker-n",

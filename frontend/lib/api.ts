@@ -8,8 +8,11 @@ import type { Catalog, JobStatus, ParamValues, ScenarioMeta, SimulationResult } 
  * 3. Local fallback: http://localhost:8000.
  */
 export function getApiBase(): string {
-  if (typeof window === "undefined" && process.env.BACKEND_URL) {
-    return process.env.BACKEND_URL.replace(/\/$/, "");
+  if (typeof window === "undefined") {
+    const serverUrl = process.env.WORKER_N_URL || process.env.BACKEND_URL;
+    if (serverUrl) {
+      return serverUrl.replace(/\/$/, "");
+    }
   }
   if (process.env.NEXT_PUBLIC_API_URL) {
     return process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, "");
@@ -17,7 +20,7 @@ export function getApiBase(): string {
   if (typeof window !== "undefined") {
     return "";
   }
-  return "http://localhost:8000";
+  return "http://127.0.0.1:8000";
 }
 
 export const API = process.env.NEXT_PUBLIC_API_URL || "";

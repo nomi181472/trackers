@@ -16,6 +16,18 @@ if [ "$1" = "down" ] || [ "$1" = "stop" ]; then
     exec "$SCRIPT_DIR/stop.sh"
 fi
 
+if [ "$1" = "docker" ] || [ "$1" = "compose" ] || [ "$1" = "--docker" ]; then
+    echo -e "${BOLD}${CYAN}Starting Tracker Failure Simulator with Docker Compose...${NC}"
+    if command -v docker &>/dev/null && docker compose version &>/dev/null; then
+        exec docker compose -f "$SCRIPT_DIR/docker-compose.yml" up --build
+    elif command -v docker-compose &>/dev/null; then
+        exec docker-compose -f "$SCRIPT_DIR/docker-compose.yml" up --build
+    else
+        echo -e "${RED}Error: Neither 'docker compose' nor 'docker-compose' is installed or available in PATH.${NC}"
+        exit 1
+    fi
+fi
+
 # Colors for terminal output
 BOLD='\033[1m'
 GREEN='\033[0;32m'
@@ -75,6 +87,21 @@ free_port() {
         echo -e "${GREEN}[Port $port ($name)] Port verified.${NC}"
     fi
 }
+
+# 0. Check and stop conflicting Docker Compose services if running
+if [ -f "$SCRIPT_DIR/docker-compose.yml" ]; then
+    if command -v docker &>/dev/null && docker compose version &>/dev/null; then
+        if docker compose -f "$SCRIPT_DIR/docker-compose.yml" ps --status running -q 2>/dev/null | grep -q .; then
+            echo -e "${YELLOW}[Docker] Active Docker Compose services detected. Stopping them to release ports...${NC}"
+            docker compose -f "$SCRIPT_DIR/docker-compose.yml" down 2>/dev/null || true
+        fi
+    elif command -v docker-compose &>/dev/null; then
+        if docker-compose -f "$SCRIPT_DIR/docker-compose.yml" ps -q 2>/dev/null | grep -q .; then
+            echo -e "${YELLOW}[Docker] Active Docker Compose services detected. Stopping them to release ports...${NC}"
+            docker-compose -f "$SCRIPT_DIR/docker-compose.yml" down 2>/dev/null || true
+        fi
+    fi
+fi
 
 # 1. Check and free ports safely
 free_port "$BACKEND_PORT" "Backend"
@@ -151,6 +178,7 @@ echo -e "${GREEN}[Frontend] Starting Next.js on http://localhost:${FRONTEND_PORT
 (
     cd "$FRONTEND_DIR"
     export BACKEND_URL="${BACKEND_URL:-http://127.0.0.1:${BACKEND_PORT}}"
+    export WORKER_N_URL="${WORKER_N_URL:-http://127.0.0.1:${BACKEND_PORT}}"
     export WORKER_V_URL="${WORKER_V_URL:-http://127.0.0.1:${BACKEND_PORT}}"
     export NEXT_PUBLIC_API_URL=""
     exec npx next dev -p "$FRONTEND_PORT"
