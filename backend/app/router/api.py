@@ -34,7 +34,10 @@ def _bad_tracker(e: KeyError) -> HTTPException:
 
 @router.get("/health")
 def health():
-    return {"ok": True}
+    return {
+        "ok": True,
+        "workers": jobs.get_executor_stats(),
+    }
 
 
 @router.get("/trackers")
@@ -46,45 +49,84 @@ def list_trackers():
         "detector_params": DETECTOR_PARAMS,
         "scenario_detection_params": SCENARIO_DETECTION_PARAMS,
         "defaults": {t["id"]: REGISTRY.default_params(t["id"]) for t in trackers},
+        "worker_concurrency": jobs.get_executor_stats(),
     }
+
+
+def _parse_int(val, name: str, default: int | None = None) -> int:
+    if val is None:
+        if default is not None:
+            return default
+        raise HTTPException(status_code=400, detail=f"{name} must be an integer")
+    if isinstance(val, bool):
+        raise HTTPException(status_code=400, detail=f"{name} must be an integer")
+    try:
+        return int(val)
+    except (ValueError, TypeError) as e:
+        raise HTTPException(status_code=400, detail=f"{name} must be a valid integer") from e
+
+
+def _parse_float(val, name: str, default: float | None = None) -> float:
+    if val is None:
+        if default is not None:
+            return default
+        raise HTTPException(status_code=400, detail=f"{name} must be a number")
+    if isinstance(val, bool):
+        raise HTTPException(status_code=400, detail=f"{name} must be a number")
+    try:
+        return float(val)
+    except (ValueError, TypeError) as e:
+        raise HTTPException(status_code=400, detail=f"{name} must be a valid number") from e
 
 
 def _validate_scenario(cfg: dict) -> dict:
     """Validate scenario configuration parameters and resource bounds."""
+    if not isinstance(cfg, dict):
+        raise HTTPException(status_code=400, detail="Scenario configuration must be an object")
     params = dict(cfg)
+
     # 1. Dimensions
-    width = int(params.get("width", 640))
-    height = int(params.get("height", 640))
+    width = _parse_int(params.get("width", 640), "width")
+    height = _parse_int(params.get("height", 640), "height")
     if width < 64 or width > 1920:
         raise HTTPException(status_code=400, detail="width must be between 64 and 1920")
     if height < 64 or height > 1920:
         raise HTTPException(status_code=400, detail="height must be between 64 and 1920")
+    params["width"] = width
+    params["height"] = height
 
     # 2. FPS & Duration
-    fps = int(params.get("fps", 15))
+    fps = _parse_int(params.get("fps", 15), "fps")
     if fps < 1 or fps > 60:
         raise HTTPException(status_code=400, detail="fps must be between 1 and 60")
+    params["fps"] = fps
 
-    duration = float(params.get("duration_seconds", 8.0))
+    duration = _parse_float(params.get("duration_seconds", 8.0), "duration_seconds")
     if duration <= 0 or duration > 60:
         raise HTTPException(status_code=400, detail="duration_seconds must be between 0 and 60")
+    params["duration_seconds"] = duration
 
     # 3. Object count
-    num_objects = int(params.get("num_objects", 6 if "num_objects" not in params else params["num_objects"]))
+    num_objects = _parse_int(params.get("num_objects", 6), "num_objects")
     if num_objects < 1 or num_objects > 50:
         raise HTTPException(status_code=400, detail="num_objects must be between 1 and 50")
+    params["num_objects"] = num_objects
 
     # 4. Effective frame count: if frames is explicitly passed, validate it;
     # otherwise or additionally ensure the computed duration * fps is bounded.
     if "frames" in params and params["frames"] is not None:
-        frames = int(params["frames"])
+        frames = _parse_int(params["frames"], "frames")
         if frames < 1 or frames > 600:
             raise HTTPException(status_code=400, detail="frames must be between 1 and 600")
+        params["frames"] = frames
     else:
         frames = max(2, int(duration * fps))
         if frames < 1 or frames > 600:
             raise HTTPException(status_code=400, detail="computed frames (duration_seconds * fps) must be between 1 and 600")
         params["frames"] = frames
+
+    if "seed" in params and params["seed"] is not None:
+        params["seed"] = _parse_int(params["seed"], "seed")
 
     # 5. Combined resource cost limit
     # (Frames * Width * Height: cap buffer memory, e.g. max 600 frames * 640 * 640 ≈ 2.45e8 pixels; max 300,000,000)
@@ -131,12 +173,18 @@ def scenario_preview(payload: dict):
 @router.post("/simulations")
 def start_simulation(payload: dict):
     """payload: {scenario: {...}, detection: {...}, trackers: [{tracker_id, params}]}"""
-    scenario_cfg = payload.get("scenario") or {}
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Payload must be an object")
+    scenario_cfg = payload.get("scenario")
+    if scenario_cfg is None:
+        scenario_cfg = {}
+    elif not isinstance(scenario_cfg, dict):
+        raise HTTPException(status_code=400, detail="scenario must be an object")
     validated_scenario = _validate_scenario(scenario_cfg)
     payload["scenario"] = validated_scenario
 
     raw_trackers = payload.get("trackers", [])
-    if not raw_trackers:
+    if not isinstance(raw_trackers, list) or not raw_trackers:
         raise HTTPException(status_code=400, detail="At least one tracker must be specified")
     if len(raw_trackers) > 18:
         raise HTTPException(status_code=400, detail="Cannot benchmark more than 18 trackers simultaneously")
@@ -144,16 +192,24 @@ def start_simulation(payload: dict):
     # Merge, don't replace: a client that sends only `conf` must still get the
     # rest of the detector knobs rather than silently falling back to whatever
     # `SimDetector` happens to hardcode.
-    detection_params = {**DETECTION_DEFAULTS, **(payload.get("detection") or {})}
+    detection_cfg = payload.get("detection")
+    if detection_cfg is not None and not isinstance(detection_cfg, dict):
+        raise HTTPException(status_code=400, detail="detection must be an object")
+    detection_params = {**DETECTION_DEFAULTS, **(detection_cfg or {})}
     payload["detection"] = detection_params
     specs = []
     for tr in raw_trackers:
+        if not isinstance(tr, dict):
+            raise HTTPException(status_code=400, detail="Each tracker specification must be an object")
         tid = tr.get("tracker_id")
         try:
             meta = get_tracker(tid)
         except KeyError as e:
             raise _bad_tracker(e) from e
-        params = {**(tr.get("params") or {})}
+        params = tr.get("params") or {}
+        if not isinstance(params, dict):
+            raise HTTPException(status_code=400, detail="Tracker params must be an object")
+        params = {**params}
         for p in meta["params"]:
             params.setdefault(p["key"], p["default"])
         specs.append({"tracker_id": tid, "params": params})

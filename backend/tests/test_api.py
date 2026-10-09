@@ -33,12 +33,17 @@ def uploaded():
 
 
 def test_health(client):
-    assert client.get("/api/health").json() == {"ok": True}
+    body = client.get("/api/health").json()
+    assert body["ok"] is True
+    assert "workers" in body
+    assert body["workers"]["max_workers"] >= 1
 
 
 def test_catalog_shape_is_unchanged(client):
     body = client.get("/api/trackers").json()
-    assert set(body) == {"trackers", "detector_params", "scenario_detection_params", "defaults"}
+    assert {"trackers", "detector_params", "scenario_detection_params", "defaults"} <= set(body)
+    assert "worker_concurrency" in body
+    assert body["worker_concurrency"]["max_workers"] >= 1
     assert len(body["trackers"]) == len(REGISTRY.ids())
     for entry in body["trackers"]:
         assert set(entry) == CATALOG_KEYS, entry.get("id")
@@ -222,4 +227,84 @@ def test_workload_validation_on_scenario_preview(client):
         "fps": 30,
     })
     assert r.status_code == 400
+
+
+@pytest.mark.parametrize("field,bad_val", [
+    ("width", "not-a-number"),
+    ("height", [640]),
+    ("fps", "fifteen"),
+    ("duration_seconds", "long"),
+    ("num_objects", {}),
+    ("frames", "invalid"),
+    ("width", True),
+])
+def test_malformed_numerics_return_400_not_500(client, field, bad_val):
+    # Preview endpoint
+    r_prev = client.post("/api/scenarios/preview", json={field: bad_val})
+    assert r_prev.status_code == 400
+    assert "must be" in r_prev.json()["detail"]
+
+    # Simulations endpoint
+    r_sim = client.post("/api/simulations", json={
+        "scenario": {field: bad_val},
+        "trackers": [{"tracker_id": "greedy_iou"}],
+    })
+    assert r_sim.status_code == 400
+    assert "must be" in r_sim.json()["detail"]
+
+
+def test_queue_bounding_and_admission_limit(client, monkeypatch):
+    """When the queue capacity is reached, new submissions must return 429."""
+    from app.core import jobs
+
+    # Temporarily set max queue size to 2 for test
+    monkeypatch.setattr(config, "SIM_MAX_QUEUE_SIZE", 2)
+
+    # Artificially populate queued jobs
+    with jobs._lock:
+        old_jobs = dict(jobs._JOBS)
+        jobs._JOBS["dummy_q1"] = {"id": "dummy_q1", "status": "queued"}
+        jobs._JOBS["dummy_q2"] = {"id": "dummy_q2", "status": "queued"}
+
+    try:
+        r = client.post("/api/simulations", json={
+            "scenario": {"seed": 1, "frames": 2},
+            "trackers": [{"tracker_id": "greedy_iou"}],
+        })
+        assert r.status_code == 429
+        assert "Retry-After" in r.headers
+        assert "queue is full" in r.json()["detail"].lower()
+    finally:
+        with jobs._lock:
+            jobs._JOBS.clear()
+            jobs._JOBS.update(old_jobs)
+
+
+def test_process_restart_recovery(client):
+    """Jobs left in 'running' or 'queued' on disk must be recovered to 'error'."""
+    from app.core import jobs
+
+    jid = f"restart_test_{config.new_id()}"
+    job_file = config.JOBS_DIR / f"{jid}.json"
+    dummy_job = {
+        "id": jid,
+        "kind": "simulation",
+        "status": "running",
+        "progress": 0.5,
+        "message": "Executing frame 20",
+    }
+    jobs._persist_job(dummy_job)
+
+    try:
+        recovered = jobs.recover_interrupted_jobs()
+        assert recovered >= 1
+
+        rec = jobs.get_job(jid)
+        assert rec["status"] == "error"
+        assert rec["error_type"] == "ProcessRestartError"
+        assert "interrupted" in rec["message"].lower()
+    finally:
+        job_file.unlink(missing_ok=True)
+
+
 

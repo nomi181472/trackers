@@ -141,6 +141,7 @@ echo -e "${GREEN}[Backend]  Starting uvicorn on http://${BACKEND_HOST}:${BACKEND
 (
     cd "$BACKEND_DIR"
     export DATA_DIR="${DATA_DIR:-$BACKEND_DIR/data}"
+    export SIM_MAX_WORKERS="${SIM_MAX_WORKERS:-2}"
     exec "$PYTHON_BIN" -m uvicorn app.main:app --host "$BACKEND_HOST" --port "$BACKEND_PORT" --reload
 ) &
 BACKEND_PID=$!

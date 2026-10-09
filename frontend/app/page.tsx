@@ -218,6 +218,31 @@ export default function Home() {
             <span>Clear Records</span>
           </button>
 
+          {/* Local Worker Concurrency Indicator */}
+          {catalog?.worker_concurrency ? (
+            <div
+              className="worker-badge tooltip"
+              title="Locally configured thread pool executor capacity"
+            >
+              <span className="active-dot" />
+              <span>
+                Workers: <b style={{ color: "var(--accent)" }}>{catalog.worker_concurrency.max_workers}</b>
+              </span>
+              <div className="dttip" style={{ width: "260px" }}>
+                <b>Local Job Concurrency</b>
+                <div style={{ marginTop: "4px", lineHeight: "1.4" }}>
+                  Currently running with <b>{catalog.worker_concurrency.max_workers} default workers</b> (queue limit: {catalog.worker_concurrency.max_queue_size}).
+                </div>
+                <div className="hint" style={{ marginTop: "6px" }}>
+                  💡 To increase workers locally, start the backend with:
+                  <div className="mono" style={{ marginTop: "4px", color: "var(--accent-hover)", background: "var(--bg)", padding: "3px 6px", borderRadius: "4px" }}>
+                    SIM_MAX_WORKERS=4 ./run.sh
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
           {/* Theme / Appearance Switcher */}
           <div className="theme-selector">
             <button

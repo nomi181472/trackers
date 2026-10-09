@@ -33,7 +33,7 @@ async def lifespan(app: FastAPI):
         logger.info("Server startup: recovered %d interrupted job(s) from previous process", recovered)
     yield
     # On process shutdown: cleanly shutdown worker threads
-    jobs._executor.shutdown(wait=False, cancel_futures=True)
+    jobs.shutdown_executor(wait=False, cancel_futures=True)
 
 
 app = FastAPI(

@@ -13,7 +13,25 @@ logger = logging.getLogger("tracker_app.jobs")
 
 _lock = threading.Lock()
 _JOBS: dict[str, dict] = {}
-_executor = ThreadPoolExecutor(max_workers=config.SIM_MAX_WORKERS, thread_name_prefix="job")
+_executor: ThreadPoolExecutor | None = None
+
+
+def get_executor() -> ThreadPoolExecutor:
+    """Get active executor or lazily initialize/re-create if shut down."""
+    global _executor
+    with _lock:
+        if _executor is None or getattr(_executor, "_shutdown", False):
+            _executor = ThreadPoolExecutor(max_workers=config.SIM_MAX_WORKERS, thread_name_prefix="job")
+        return _executor
+
+
+def shutdown_executor(wait: bool = False, cancel_futures: bool = True) -> None:
+    """Shutdown executor cleanly."""
+    global _executor
+    with _lock:
+        if _executor is not None:
+            _executor.shutdown(wait=wait, cancel_futures=cancel_futures)
+            _executor = None
 
 
 class QueueFullError(Exception):
@@ -108,7 +126,7 @@ def start_job(kind: str, payload: dict, fn) -> str:
 
     _persist_job(job_record)
     logger.info("Job queued: %s (kind=%s, workers=%d, queued=%d)", jid, kind, config.SIM_MAX_WORKERS, queued_count + 1)
-    _executor.submit(_run, jid, fn)
+    get_executor().submit(_run, jid, fn)
     return jid
 
 

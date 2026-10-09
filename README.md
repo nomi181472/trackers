@@ -213,6 +213,26 @@ npm install
 npm run dev -- -p 3000
 ```
 
+### ⚡ Local Worker Concurrency & Execution Bounds
+
+Jobs execute using an internal, bounded `ThreadPoolExecutor` designed for reproducible single-workstation analysis.
+- **Default Workers**: `2` concurrent tracker simulation jobs to protect local CPU cores and frame rendering throughput.
+- **Admission Bounding**: Maximum queue depth is bounded (default: 16 pending jobs). If concurrent submissions saturate the queue, the simulator returns an explicit `429 Too Many Requests` (Queue full) with a `Retry-After` header rather than accumulating unboundedly.
+- **Process Restart Recovery**: Jobs interrupted by process restarts are automatically discovered and transitioned to `error` status with diagnostic reason (`Execution interrupted by server or process restart`), preventing jobs from hanging forever in `running` or `queued`.
+
+#### Increasing the Number of Local Workers
+If your machine has a higher core count (e.g. 8 or 16 CPU cores) and you want to execute more concurrent tracker simulations locally, override `SIM_MAX_WORKERS` before starting the simulator:
+
+```bash
+# With the one-command runner:
+SIM_MAX_WORKERS=4 ./run.sh
+
+# Or when launching the backend manually:
+export SIM_MAX_WORKERS=4
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+You can also view your active worker pool count directly in the top header bar of the UI.
+
 ---
 
 ## 📡 REST API Reference

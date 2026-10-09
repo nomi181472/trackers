@@ -27,11 +27,19 @@ export interface TrackerMeta {
   available: boolean;
 }
 
+export interface WorkerConcurrencyStats {
+  max_workers: number;
+  max_queue_size: number;
+  running_jobs: number;
+  queued_jobs: number;
+}
+
 export interface Catalog {
   trackers: TrackerMeta[];
   detector_params: HyperParam[];
   scenario_detection_params: HyperParam[];
   defaults: Record<string, Record<string, number | boolean | string>>;
+  worker_concurrency?: WorkerConcurrencyStats;
 }
 
 export interface ScenarioMeta {
